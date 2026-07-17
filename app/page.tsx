@@ -5,7 +5,7 @@ import {
   Heart, ListFilter, Map as MapIcon, MapPin, Plus, Search, SlidersHorizontal,
   Sparkles, Star, Trophy, UserRound, X
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type City = {
   id: number; name: string; country: string; continent: string; lat: number; lng: number;
@@ -31,6 +31,116 @@ const suggestions = [
 
 const colors = ["", "#D66055", "#E58D52", "#D6B44D", "#81AA66", "#3E9367"];
 const categories = ["Overall", "Food", "Culture", "Nature", "Nightlife"];
+
+function InteractiveMap({
+  cities,
+  selected,
+  onSelect
+}: {
+  cities: City[];
+  selected: City | null;
+  onSelect: (city: City) => void;
+}) {
+  const mapElement = useRef<HTMLDivElement>(null);
+  const mapInstance = useRef<import("leaflet").Map | null>(null);
+  const markerLayer = useRef<import("leaflet").LayerGroup | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function createMap() {
+      if (!mapElement.current || mapInstance.current) return;
+      const L = await import("leaflet");
+      if (cancelled || !mapElement.current) return;
+
+      const map = L.map(mapElement.current, {
+        center: [22, 8],
+        zoom: 2,
+        minZoom: 2,
+        maxZoom: 18,
+        zoomControl: false,
+        worldCopyJump: true,
+        preferCanvas: true
+      });
+
+      L.control.zoom({ position: "topright" }).addTo(map);
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 19
+      }).addTo(map);
+
+      const layer = L.layerGroup().addTo(map);
+      mapInstance.current = map;
+      markerLayer.current = layer;
+
+      const updateZoomDetail = () => {
+        if (mapElement.current) {
+          mapElement.current.dataset.cityZoom = map.getZoom() >= 5 ? "true" : "false";
+        }
+      };
+      map.on("zoomend", updateZoomDetail);
+      updateZoomDetail();
+    }
+
+    createMap();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function drawMarkers() {
+      const map = mapInstance.current;
+      const layer = markerLayer.current;
+      if (!map || !layer) {
+        window.setTimeout(drawMarkers, 40);
+        return;
+      }
+
+      const L = await import("leaflet");
+      if (cancelled) return;
+      layer.clearLayers();
+
+      cities.forEach(city => {
+        const isSelected = selected?.id === city.id;
+        const icon = L.divIcon({
+          className: "city-div-icon",
+          html: `<div class="city-map-marker${isSelected ? " is-selected" : ""}" style="--marker-color:${colors[city.rating]}">
+            <span class="city-marker-score">${city.rating}</span>
+            <span class="city-marker-label">${city.name}</span>
+          </div>`,
+          iconSize: [38, 38],
+          iconAnchor: [19, 19]
+        });
+
+        const marker = L.marker([city.lat, city.lng], {
+          icon,
+          title: `${city.name}, ${city.rating} stars`,
+          riseOnHover: true
+        }).addTo(layer);
+
+        marker.bindTooltip(
+          `<strong>${city.name}</strong><br>${city.country} · ${city.rating}/5`,
+          { direction: "top", offset: [0, -18], className: "city-tooltip" }
+        );
+        marker.on("click", () => {
+          onSelect(city);
+          if (map.getZoom() < 6) map.flyTo([city.lat, city.lng], 6, { duration: 0.8 });
+        });
+      });
+    }
+
+    drawMarkers();
+    return () => { cancelled = true; };
+  }, [cities, selected, onSelect]);
+
+  useEffect(() => () => {
+    mapInstance.current?.remove();
+    mapInstance.current = null;
+  }, []);
+
+  return <div ref={mapElement} className="leaflet-map" aria-label="Interactive map of your rated cities" />;
+}
 
 export default function CityLogger() {
   const [tab, setTab] = useState<"map" | "rankings" | "profile">("map");
@@ -110,16 +220,7 @@ export default function CityLogger() {
             </div>
 
             <div className="map-card">
-              <div className="world-map" role="img" aria-label="World map showing rated cities">
-                <div className="land land-a"/><div className="land land-b"/><div className="land land-c"/><div className="land land-d"/><div className="land land-e"/>
-                {filtered.map(city => (
-                  <button key={city.id} className={`marker ${selected?.id === city.id ? "selected" : ""}`}
-                    style={{ left: `${((city.lng + 180) / 360) * 100}%`, top: `${((90 - city.lat) / 180) * 100}%`, background: colors[city.rating] }}
-                    aria-label={`${city.name}, ${city.rating} stars`} onClick={() => setSelected(city)}>
-                    <span>{city.rating}</span>
-                  </button>
-                ))}
-              </div>
+              <InteractiveMap cities={filtered} selected={selected} onSelect={setSelected}/>
               <div className="map-legend"><span>Not for me</span>{colors.slice(1).map(c => <i key={c} style={{ background: c }}/>) }<span>Loved it</span></div>
               {selected && filtered.some(c => c.id === selected.id) && (
                 <article className="city-preview">
