@@ -12,6 +12,11 @@ type City = {
   rating: number; category: string; date: string; note: string; emoji: string;
 };
 
+type CityOption = {
+  name: string; ascii?: string; country: string; continent: string;
+  lat: number; lng: number; emoji: string; population?: number;
+};
+
 const starterCities: City[] = [
   { id: 1, name: "Lisbon", country: "Portugal", continent: "Europe", lat: 38.72, lng: -9.14, rating: 5, category: "Food", date: "May 2025", note: "Golden evenings, tiled streets and the best small plates.", emoji: "🇵🇹" },
   { id: 2, name: "Kyoto", country: "Japan", continent: "Asia", lat: 35.01, lng: 135.77, rating: 5, category: "Culture", date: "Oct 2024", note: "Quiet gardens before breakfast. A city that rewards slowing down.", emoji: "🇯🇵" },
@@ -21,7 +26,7 @@ const starterCities: City[] = [
   { id: 6, name: "Reykjavík", country: "Iceland", continent: "Europe", lat: 64.15, lng: -21.94, rating: 4, category: "Nature", date: "Jan 2023", note: "Small city, enormous landscapes.", emoji: "🇮🇸" }
 ];
 
-const suggestions = [
+const suggestions: CityOption[] = [
   { name: "Barcelona", country: "Spain", continent: "Europe", lat: 41.39, lng: 2.17, emoji: "🇪🇸" },
   { name: "Buenos Aires", country: "Argentina", continent: "South America", lat: -34.6, lng: -58.38, emoji: "🇦🇷" },
   { name: "Copenhagen", country: "Denmark", continent: "Europe", lat: 55.68, lng: 12.57, emoji: "🇩🇰" },
@@ -31,6 +36,10 @@ const suggestions = [
 
 const colors = ["", "#D66055", "#E58D52", "#D6B44D", "#81AA66", "#3E9367"];
 const categories = ["Overall", "Food", "Culture", "Nature", "Nightlife"];
+const normalizeSearch = (value: string) => value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+const countryFlag = (code: string) => code.length === 2
+  ? String.fromCodePoint(...code.toUpperCase().split("").map(char => 127397 + char.charCodeAt(0)))
+  : "🌍";
 
 function InteractiveMap({
   cities,
@@ -106,7 +115,6 @@ function InteractiveMap({
         const icon = L.divIcon({
           className: "city-div-icon",
           html: `<div class="city-map-marker${isSelected ? " is-selected" : ""}" style="--marker-color:${colors[city.rating]}">
-            <span class="city-marker-score">${city.rating}</span>
             <span class="city-marker-label">${city.name}</span>
           </div>`,
           iconSize: [38, 38],
@@ -148,7 +156,9 @@ export default function CityLogger() {
   const [selected, setSelected] = useState<City | null>(starterCities[0]);
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
-  const [candidate, setCandidate] = useState<(typeof suggestions)[0] | null>(null);
+  const [candidate, setCandidate] = useState<CityOption | null>(null);
+  const [searchResults, setSearchResults] = useState<CityOption[]>(suggestions);
+  const [searching, setSearching] = useState(false);
   const [rating, setRating] = useState(0);
   const [note, setNote] = useState("");
   const [category, setCategory] = useState("Overall");
@@ -161,7 +171,49 @@ export default function CityLogger() {
 
   const ranked = useMemo(() => [...filtered].sort((a, b) => b.rating - a.rating || a.name.localeCompare(b.name)), [filtered]);
 
-  function beginAdd(city: (typeof suggestions)[0]) {
+  useEffect(() => {
+    const needle = normalizeSearch(query.trim());
+    if (needle.length < 2) {
+      setSearchResults(suggestions);
+      setSearching(false);
+      return;
+    }
+
+    const prefix = needle.replace(/[^a-z0-9]/g, "").slice(0, 2) || "__";
+    const controller = new AbortController();
+    setSearching(true);
+
+    fetch(`/cities/${prefix}.json`, { signal: controller.signal })
+      .then(response => response.ok ? response.json() : [])
+      .then((records: [string, string, string, string, number, number, number, string][]) => {
+        const matches = records
+          .filter(record =>
+            normalizeSearch(record[0]).includes(needle) ||
+            normalizeSearch(record[1]).includes(needle) ||
+            normalizeSearch(record[2]).includes(needle)
+          )
+          .slice(0, 12)
+          .map(record => ({
+            name: record[0],
+            ascii: record[1],
+            country: record[2],
+            continent: record[3],
+            lat: record[4],
+            lng: record[5],
+            population: record[6],
+            emoji: countryFlag(record[7])
+          }));
+        setSearchResults(matches);
+      })
+      .catch(error => {
+        if (error.name !== "AbortError") setSearchResults([]);
+      })
+      .finally(() => setSearching(false));
+
+    return () => controller.abort();
+  }, [query]);
+
+  function beginAdd(city: CityOption) {
     setCandidate(city); setQuery(city.name); setRating(0); setNote("");
   }
 
@@ -294,12 +346,14 @@ export default function CityLogger() {
             {!candidate ? (
               <>
                 <label className="search-box"><Search/><input autoFocus value={query} onChange={e => setQuery(e.target.value)} placeholder="Search for a city"/></label>
-                <p className="section-label">{query ? "SEARCH RESULTS" : "SUGGESTED FOR YOU"}</p>
+                <p className="section-label">{query ? searching ? "SEARCHING 234,000+ CITIES…" : "SEARCH RESULTS" : "SUGGESTED FOR YOU"}</p>
                 <div className="suggestions">
-                  {suggestions.filter(x => `${x.name} ${x.country}`.toLowerCase().includes(query.toLowerCase())).map(city => (
-                    <button key={city.name} onClick={() => beginAdd(city)}><span>{city.emoji}</span><span><strong>{city.name}</strong><small>{city.country} · {city.continent}</small></span><Plus/></button>
+                  {searchResults.map(city => (
+                    <button key={`${city.name}-${city.country}-${city.lat}`} onClick={() => beginAdd(city)}><span>{city.emoji}</span><span><strong>{city.name}</strong><small>{city.country} · {city.continent}{city.population ? ` · ${city.population.toLocaleString()} people` : ""}</small></span><Plus/></button>
                   ))}
+                  {!searching && query.length >= 2 && searchResults.length === 0 && <div className="empty-search">No matching city found. Try another spelling.</div>}
                 </div>
+                <p className="data-credit">Worldwide city data by <a href="https://www.geonames.org/" target="_blank" rel="noreferrer">GeoNames</a></p>
               </>
             ) : (
               <div className="rating-form">
