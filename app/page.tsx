@@ -5,13 +5,17 @@ import {
   GitCompareArrows, GripVertical, Heart, ListFilter, ListPlus, Map as MapIcon, MapPin,
   Plus, Search, SlidersHorizontal, Sparkles, Star, Trophy, UserRound, X
 } from "lucide-react";
+import type { User } from "@supabase/supabase-js";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createVisit, deleteVisit, downloadAccountData, loadVisits, uploadVisitPhoto, type StoredCity } from "../lib/city-data";
+import { authRedirectUrl, isSupabaseConfigured, supabase } from "../lib/supabase";
 
 type RatingKey = "personal" | "culture" | "architecture" | "food" | "nature" | "nightlife";
 type Ratings = Record<RatingKey, number | null>;
+type CityId = number | string;
 
 type City = {
-  id: number; name: string; country: string; continent: string; lat: number; lng: number;
+  id: CityId; name: string; country: string; continent: string; lat: number; lng: number;
   rating: number; ratings: Ratings; dateFrom: string; dateTo: string;
   visitType: string; note: string; emoji: string;
 };
@@ -21,7 +25,7 @@ type CityOption = {
   lat: number; lng: number; emoji: string; population?: number;
 };
 
-type PersonalList = { id: number; title: string; cityIds: number[] };
+type PersonalList = { id: number; title: string; cityIds: CityId[] };
 
 const starterCities: City[] = [
   { id: 1, name: "Lisbon", country: "Portugal", continent: "Europe", lat: 38.72, lng: -9.14, rating: 4.7, ratings: { personal: 5, culture: 4.5, architecture: 4.5, food: 5, nature: 4, nightlife: 5 }, dateFrom: "2025-05-09", dateTo: "2025-05-15", visitType: "Holiday", note: "Golden evenings, tiled streets and the best small plates.", emoji: "🇵🇹" },
@@ -245,6 +249,7 @@ export default function CityLogger() {
   const [dateTo, setDateTo] = useState("2026-07-05");
   const [visitType, setVisitType] = useState("");
   const [note, setNote] = useState("");
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [category, setCategory] = useState("Overall");
   const [filterOpen, setFilterOpen] = useState(false);
   const [continent, setContinent] = useState("All");
@@ -252,13 +257,23 @@ export default function CityLogger() {
     { name: "Mexico City", country: "Mexico", continent: "North America", lat: 19.43, lng: -99.13, emoji: "🇲🇽" },
     { name: "Hanoi", country: "Vietnam", continent: "Asia", lat: 21.03, lng: 105.85, emoji: "🇻🇳" }
   ]);
-  const [manualOrder, setManualOrder] = useState<number[] | null>(null);
-  const [draggedCity, setDraggedCity] = useState<number | null>(null);
-  const [compareIds, setCompareIds] = useState<[number, number]>([starterCities[0].id, starterCities[1].id]);
+  const [manualOrder, setManualOrder] = useState<CityId[] | null>(null);
+  const [draggedCity, setDraggedCity] = useState<CityId | null>(null);
+  const [compareIds, setCompareIds] = useState<[CityId, CityId]>([starterCities[0].id, starterCities[1].id]);
   const [lists, setLists] = useState<PersonalList[]>([
     { id: 1, title: "Most underrated", cityIds: [starterCities[0].id, starterCities[4].id, starterCities[2].id] }
   ]);
   const [newListTitle, setNewListTitle] = useState("");
+  const [user, setUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authView, setAuthView] = useState<"welcome" | "signin" | "signup" | "forgot" | "reset">("welcome");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authName, setAuthName] = useState("");
+  const [authMessage, setAuthMessage] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<"idle" | "loading" | "saved" | "error">("idle");
 
   const filtered = useMemo(() =>
     cities.filter(city =>
@@ -277,9 +292,53 @@ export default function CityLogger() {
     const positions = new Map(manualOrder.map((id, index) => [id, index]));
     return [...ranked].sort((a, b) => (positions.get(a.id) ?? 999) - (positions.get(b.id) ?? 999));
   }, [ranked, manualOrder]);
-  const compared = compareIds.map(id => cities.find(city => city.id === id) || cities[0]);
+  const compared = compareIds.map(id => cities.find(city => String(city.id) === String(id)) || cities[0]).filter(Boolean);
   const draftOverall = calculateOverall(ratings);
   const requiredRatingsComplete = requiredRatingKeys.every(key => ratings[key] !== null && (ratings[key] || 0) > 0);
+
+  useEffect(() => {
+    if (!supabase) {
+      setAuthReady(true);
+      return;
+    }
+    supabase.auth.getSession().then(({ data }) => {
+      setUser(data.session?.user || null);
+      setAuthReady(true);
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      setUser(session?.user || null);
+      if (event === "PASSWORD_RECOVERY") {
+        setAuthView("reset");
+        setAuthOpen(true);
+      }
+      if (event === "SIGNED_OUT") {
+        setCities(starterCities);
+        setSelected(starterCities[0]);
+      }
+    });
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    const refresh = async () => {
+      setSyncStatus("loading");
+      try {
+        const stored = await loadVisits();
+        if (!active) return;
+        setCities(stored);
+        setSelected(stored[0] || null);
+        setSyncStatus("idle");
+      } catch {
+        if (active) setSyncStatus("error");
+      }
+    };
+    refresh();
+    const onVisible = () => { if (document.visibilityState === "visible") refresh(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { active = false; document.removeEventListener("visibilitychange", onVisible); };
+  }, [user]);
 
   useEffect(() => {
     const needle = normalizeSearch(query.trim());
@@ -331,13 +390,19 @@ export default function CityLogger() {
     setDateTo("2026-07-05");
     setVisitType("");
     setNote("");
+    setPhotoFile(null);
   }
 
-  function saveCity() {
+  async function saveCity() {
     if (!candidate || !requiredRatingsComplete || !dateFrom || !dateTo || dateTo < dateFrom) return;
-    const newCity: City = {
+    if (!user) {
+      setAuthView("welcome");
+      setAuthMessage("Create an account or sign in to save this visit permanently.");
+      setAuthOpen(true);
+      return;
+    }
+    const draftCity = {
       ...candidate,
-      id: Date.now(),
       rating: draftOverall,
       ratings,
       dateFrom,
@@ -345,8 +410,103 @@ export default function CityLogger() {
       visitType,
       note: note || "A new city in my travel story."
     };
-    setCities(prev => [newCity, ...prev]);
-    setSelected(newCity); setAdding(false); setCandidate(null); setQuery(""); setTab("map");
+    setSyncStatus("loading");
+    try {
+      const newCity = await createVisit(draftCity as Omit<StoredCity, "id">, user.id);
+      if (photoFile) await uploadVisitPhoto(user.id, newCity.id, photoFile);
+      setCities(prev => [newCity, ...prev]);
+      setSelected(newCity); setAdding(false); setCandidate(null); setQuery(""); setTab("map");
+      setSyncStatus("saved");
+      window.setTimeout(() => setSyncStatus("idle"), 1800);
+    } catch (error) {
+      setSyncStatus("error");
+      setAuthMessage(error instanceof Error ? error.message : "The visit could not be saved.");
+    }
+  }
+
+  async function submitAuth() {
+    if (!supabase) {
+      setAuthMessage("Connect a Supabase project using the environment variables in .env.example.");
+      return;
+    }
+    setAuthBusy(true);
+    setAuthMessage("");
+    try {
+      if (authView === "signup") {
+        const { data, error } = await supabase.auth.signUp({
+          email: authEmail,
+          password: authPassword,
+          options: { data: { display_name: authName }, emailRedirectTo: authRedirectUrl() }
+        });
+        if (error) throw error;
+        setAuthMessage(data.session ? "Account created." : "Check your email to verify your account, then sign in.");
+      } else if (authView === "signin") {
+        const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
+        if (error) throw error;
+        setAuthOpen(false);
+      } else if (authView === "forgot") {
+        const { error } = await supabase.auth.resetPasswordForEmail(authEmail, { redirectTo: authRedirectUrl() });
+        if (error) throw error;
+        setAuthMessage("Password reset instructions have been sent if that account exists.");
+      } else if (authView === "reset") {
+        const { error } = await supabase.auth.updateUser({ password: authPassword });
+        if (error) throw error;
+        setAuthMessage("Password updated. You can continue using CityLogger.");
+      }
+    } catch (error) {
+      setAuthMessage(error instanceof Error ? error.message : "Authentication failed.");
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function exportMyData() {
+    if (!user) return;
+    setSyncStatus("loading");
+    try {
+      const payload = await downloadAccountData(user.id, user.email, user.created_at);
+      const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `citylogger-data-${new Date().toISOString().slice(0, 10)}.json`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      setSyncStatus("idle");
+    } catch {
+      setSyncStatus("error");
+    }
+  }
+
+  async function removeAccount() {
+    if (!supabase || !user) return;
+    const confirmed = window.confirm("Permanently delete your account, visits, ratings, notes and photographs? This cannot be undone.");
+    if (!confirmed) return;
+    setSyncStatus("loading");
+    const { error } = await supabase.functions.invoke("delete-account", { method: "POST" });
+    if (error) {
+      setSyncStatus("error");
+      setAuthMessage(error.message);
+      return;
+    }
+    await supabase.auth.signOut();
+    setCities(starterCities);
+    setSelected(starterCities[0]);
+    setTab("map");
+    setSyncStatus("idle");
+  }
+
+  async function removeSelectedVisit() {
+    if (!user || !selected || typeof selected.id !== "string") return;
+    if (!window.confirm(`Delete ${selected.name}? Any attached photographs will also be permanently deleted.`)) return;
+    setSyncStatus("loading");
+    try {
+      await deleteVisit(selected.id);
+      setCities(current => current.filter(city => city.id !== selected.id));
+      setSelected(null);
+      setSyncStatus("idle");
+    } catch {
+      setSyncStatus("error");
+    }
   }
 
   function addWantToVisit(city: CityOption) {
@@ -355,7 +515,7 @@ export default function CityLogger() {
       : [...current, city]);
   }
 
-  function reorderRanking(targetId: number) {
+  function reorderRanking(targetId: CityId) {
     if (draggedCity === null || draggedCity === targetId) return;
     const order = displayedRanked.map(city => city.id);
     const from = order.indexOf(draggedCity);
@@ -372,7 +532,7 @@ export default function CityLogger() {
     setNewListTitle("");
   }
 
-  function moveListCity(listId: number, cityId: number, direction: -1 | 1) {
+  function moveListCity(listId: number, cityId: CityId, direction: -1 | 1) {
     setLists(current => current.map(list => {
       if (list.id !== listId) return list;
       const cityIds = [...list.cityIds];
@@ -403,7 +563,10 @@ export default function CityLogger() {
           <div className="progress"><span style={{ width: "38%" }}/></div>
           <small>38% of your 2026 goal</small>
         </div>
-        <div className="avatar-row"><span className="avatar">AM</span><span><strong>Alex Morgan</strong><small>Traveller since 2019</small></span></div>
+        <button className="avatar-row account-entry" onClick={() => user ? setTab("profile") : setAuthOpen(true)}>
+          <span className="avatar">{user ? (user.user_metadata?.display_name || user.email || "U").slice(0, 2).toUpperCase() : "?"}</span>
+          <span><strong>{user ? user.user_metadata?.display_name || "My account" : "Create an account"}</strong><small>{user ? syncStatus === "loading" ? "Syncing…" : "Private · synced" : "Save and sync your travels"}</small></span>
+        </button>
       </aside>
 
       <section className="main-pane">
@@ -412,7 +575,10 @@ export default function CityLogger() {
             <p className="kicker">{tab === "map" ? "YOUR TRAVEL MAP" : tab === "rankings" ? "YOUR FAVOURITES" : tab === "log" ? "YOUR TRAVEL LOG" : tab === "compare" ? "CITY HEAD TO HEAD" : tab === "lists" ? "YOUR COLLECTIONS" : "YOUR JOURNEY"}</p>
             <h1>{tab === "map" ? "The world, according to you." : tab === "rankings" ? "Cities worth returning to." : tab === "log" ? "Every trip, in order." : tab === "compare" ? "How do your cities compare?" : tab === "lists" ? "Save places your way." : "A life well travelled."}</h1>
           </div>
-          <button className="primary-btn" onClick={() => setAdding(true)}><Plus/>Log a city</button>
+          <div className="top-actions">
+            {!user && <button className="account-btn" onClick={() => { setAuthView("welcome"); setAuthOpen(true); }}>Sign in</button>}
+            <button className="primary-btn" onClick={() => setAdding(true)}><Plus/>Log a city</button>
+          </div>
         </header>
 
         {tab === "map" && (
@@ -442,7 +608,7 @@ export default function CityLogger() {
                     <h2>{selected.name}</h2>
                     <div className="stars">{[1,2,3,4,5].map(n => <Star key={n} fill={n <= Math.round(selected.rating) ? colorForScore(selected.rating) : "none"} color={n <= Math.round(selected.rating) ? colorForScore(selected.rating) : "#c7c9c3"}/>)}<strong>{selected.rating.toFixed(1)}</strong></div>
                     <p>“{selected.note}”</p>
-                    <button className="text-btn">View city story <span>→</span></button>
+                    <div className="preview-actions"><button className="text-btn">View city story <span>→</span></button>{user && typeof selected.id === "string" && <button className="delete-text" onClick={removeSelectedVisit}>Delete visit</button>}</div>
                   </div>
                 </article>
               )}
@@ -494,9 +660,9 @@ export default function CityLogger() {
               <div className="section-heading"><span><GitCompareArrows/></span><div><p className="kicker">COMPARE CITIES</p><h2>Head to head</h2></div></div>
               <div className="compare-pickers">
                 {[0, 1].map(index => (
-                  <select key={index} aria-label={`Compare city ${index + 1}`} value={compareIds[index]} onChange={event => setCompareIds(current => {
-                    const next: [number, number] = [...current];
-                    next[index] = Number(event.target.value);
+                  <select key={index} aria-label={`Compare city ${index + 1}`} value={String(compareIds[index])} onChange={event => setCompareIds(current => {
+                    const next: [CityId, CityId] = [...current];
+                    next[index] = event.target.value;
                     return next;
                   })}>
                     {cities.map(city => <option key={city.id} value={city.id}>{city.name}, {city.country}</option>)}
@@ -533,8 +699,8 @@ export default function CityLogger() {
                       return city ? <span key={id}><b>{index + 1}</b>{city.emoji} {city.name}<span className="list-order"><button disabled={index === 0} onClick={() => moveListCity(list.id, id, -1)}>↑</button><button disabled={index === list.cityIds.length - 1} onClick={() => moveListCity(list.id, id, 1)}>↓</button></span></span> : null;
                     })}
                     <select aria-label={`Add city to ${list.title}`} value="" onChange={event => {
-                      const id = Number(event.target.value);
-                      if (id) setLists(current => current.map(item => item.id === list.id && !item.cityIds.includes(id) ? { ...item, cityIds: [...item.cityIds, id] } : item));
+                      const city = cities.find(candidate => String(candidate.id) === event.target.value);
+                      if (city) setLists(current => current.map(item => item.id === list.id && !item.cityIds.includes(city.id) ? { ...item, cityIds: [...item.cityIds, city.id] } : item));
                     }}><option value="">+ Add a city</option>{cities.filter(city => !list.cityIds.includes(city.id)).map(city => <option key={city.id} value={city.id}>{city.name}</option>)}</select>
                   </div>
                 </article>
@@ -557,6 +723,24 @@ export default function CityLogger() {
             </div>
             <article className="insight-card"><span className="insight-icon"><Sparkles/></span><div><p className="kicker">YOUR TRAVEL TASTE</p><h3>You’re happiest in culture-rich coastal cities.</h3><p>Lisbon, Kyoto and Cape Town define your top travel pattern. Food and nature consistently lift your ratings.</p></div></article>
             <div className="year-card"><div><p className="kicker">2026 TRAVEL GOAL</p><h3>6 of 16 new cities</h3></div><span>38%</span><div className="wide-progress"><i style={{width:"38%"}}/></div></div>
+            <section className="account-settings">
+              <p className="kicker">ACCOUNT & PRIVACY</p>
+              {user ? <>
+                <h3>{user.email}</h3>
+                <p>Your cities, ratings, notes and photographs are private and accessible only to this account.</p>
+                <div className="settings-actions">
+                  <button onClick={exportMyData}>Download My Data</button>
+                  <a href="/privacy">Privacy Policy</a>
+                  <a href="/terms">Terms of Use</a>
+                  <button onClick={() => supabase?.auth.signOut()}>Sign out</button>
+                  <button className="danger" onClick={removeAccount}>Delete Account</button>
+                </div>
+              </> : <>
+                <h3>Keep your travel history safe.</h3>
+                <p>Create an account to save visits permanently and sync them across your devices.</p>
+                <button className="primary-btn" onClick={() => setAuthOpen(true)}>Create account or sign in</button>
+              </>}
+            </section>
           </div>
         )}
       </section>
@@ -617,13 +801,44 @@ export default function CityLogger() {
                 </div>
                 <label className="select-field"><span><Filter/>Visit type <small>OPTIONAL</small></span><select value={visitType} onChange={event => setVisitType(event.target.value)}><option value="">Choose a visit type</option><option>Holiday</option><option>City break</option><option>Road trip</option><option>Work</option><option>Study</option><option>Lived there</option><option>Visiting friends or family</option><option>Day trip</option></select></label>
                 <label className="note-field"><span>Your memory <small>OPTIONAL</small></span><textarea value={note} onChange={e => setNote(e.target.value)} maxLength={160} placeholder="What made this city memorable?"/><small>{note.length}/160</small></label>
-                <button className="photo-btn"><Camera/>Add a favourite photo <small>Optional</small></button>
+                <label className="photo-btn"><Camera/>{photoFile ? photoFile.name : "Add a favourite photo"} <small>{photoFile ? "Ready to upload" : "Optional · JPEG, PNG, WebP or HEIC · 10 MB max"}</small><input type="file" accept="image/jpeg,image/png,image/webp,image/heic" onChange={event => setPhotoFile(event.target.files?.[0] || null)}/></label>
                 <button className="save-btn" disabled={!requiredRatingsComplete || !dateFrom || !dateTo || dateTo < dateFrom} onClick={saveCity}><MapPin/>Add to my map · {draftOverall.toFixed(1)}</button>
               </div>
             )}
           </section>
         </div>
       )}
+
+      {authOpen && (
+        <div className="modal-backdrop auth-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) setAuthOpen(false); }}>
+          <section className="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+            <button className="close-btn static auth-close" onClick={() => setAuthOpen(false)} aria-label="Close account dialog"><X/></button>
+            {authView === "welcome" ? <>
+              <span className="auth-mark"><MapPin/></span>
+              <p className="kicker">WELCOME TO CITYLOGGER</p>
+              <h2 id="auth-title">Your travels, saved for good.</h2>
+              <p>Explore the app first. When you’re ready, create a private account to save visits and sync them across devices.</p>
+              {authMessage && <p className="auth-message">{authMessage}</p>}
+              {!isSupabaseConfigured && <p className="config-note">Cloud accounts are ready in the code but this preview still needs its Supabase project keys.</p>}
+              <button className="save-btn" onClick={() => { setAuthView("signup"); setAuthMessage(""); }}>Create free account</button>
+              <button className="account-btn wide" onClick={() => { setAuthView("signin"); setAuthMessage(""); }}>I already have an account</button>
+              <p className="legal-copy">By creating an account, you agree to the <a href="/terms">Terms</a> and acknowledge the <a href="/privacy">Privacy Policy</a>.</p>
+            </> : <>
+              <button className="auth-back" onClick={() => { setAuthView("welcome"); setAuthMessage(""); }}><ArrowLeft/>Back</button>
+              <p className="kicker">{authView === "signup" ? "CREATE ACCOUNT" : authView === "signin" ? "WELCOME BACK" : authView === "forgot" ? "RESET PASSWORD" : "CHOOSE A NEW PASSWORD"}</p>
+              <h2 id="auth-title">{authView === "signup" ? "Start your private travel log." : authView === "signin" ? "Sign in to CityLogger." : authView === "forgot" ? "Check your inbox next." : "Secure your account."}</h2>
+              {authView === "signup" && <label className="auth-field"><span>Display name <small>OPTIONAL</small></span><input value={authName} onChange={event => setAuthName(event.target.value)} autoComplete="name"/></label>}
+              {authView !== "reset" && <label className="auth-field"><span>Email</span><input type="email" value={authEmail} onChange={event => setAuthEmail(event.target.value)} autoComplete="email"/></label>}
+              {authView !== "forgot" && <label className="auth-field"><span>Password</span><input type="password" minLength={8} value={authPassword} onChange={event => setAuthPassword(event.target.value)} autoComplete={authView === "signin" ? "current-password" : "new-password"}/></label>}
+              {authMessage && <p className="auth-message">{authMessage}</p>}
+              <button className="save-btn" disabled={authBusy || (authView !== "reset" && !authEmail) || (authView !== "forgot" && authPassword.length < 8)} onClick={submitAuth}>{authBusy ? "Please wait…" : authView === "signup" ? "Create account" : authView === "signin" ? "Sign in" : authView === "forgot" ? "Send reset email" : "Update password"}</button>
+              {authView === "signin" && <button className="forgot-link" onClick={() => { setAuthView("forgot"); setAuthMessage(""); }}>Forgotten your password?</button>}
+              {authView === "signup" && <p className="legal-copy">Your account is private. Read our <a href="/privacy">Privacy Policy</a> and <a href="/terms">Terms</a>.</p>}
+            </>}
+          </section>
+        </div>
+      )}
+      {authReady && syncStatus !== "idle" && <div className={`sync-toast ${syncStatus}`}>{syncStatus === "loading" ? "Syncing your travels…" : syncStatus === "saved" ? "Saved securely" : "Could not sync. Please try again."}</div>}
     </main>
   );
 }
