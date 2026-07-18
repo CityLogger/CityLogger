@@ -1,0 +1,398 @@
+/* Capacitor-only layout. The hosted website does not load this stylesheet. */
+.native-app,
+.native-app body,
+.native-app #root {
+  width: 100%;
+  min-height: 100%;
+  overscroll-behavior: none;
+}
+
+.native-app body {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
+.native-app button,
+.native-app select,
+.native-app input,
+.native-app textarea {
+  touch-action: manipulation;
+}
+
+.native-app .app-shell {
+  display: block;
+  min-height: 100dvh;
+}
+
+.native-app .sidebar,
+.native-app .mobile-nav .compare-tab {
+  display: none;
+}
+
+.native-app .main-pane {
+  min-height: 100dvh;
+  padding:
+    max(12px, env(safe-area-inset-top))
+    max(12px, env(safe-area-inset-right))
+    calc(108px + env(safe-area-inset-bottom))
+    max(12px, env(safe-area-inset-left));
+}
+
+.native-app .topbar {
+  min-height: 52px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.native-app .topbar h1 {
+  font-size: clamp(23px, 6.4vw, 30px);
+  line-height: 1.08;
+}
+
+.native-app .topbar .kicker {
+  margin-bottom: 4px;
+  font-size: 9px;
+}
+
+.native-app .top-actions {
+  display: none;
+}
+
+.native-app .control-row,
+.native-app .rankings-head {
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 9px;
+}
+
+.native-app .segmented {
+  max-width: none;
+  flex: 1;
+  padding: 3px;
+  border-radius: 11px;
+  scrollbar-width: none;
+}
+
+.native-app .segmented::-webkit-scrollbar {
+  display: none;
+}
+
+.native-app .segmented button {
+  min-height: 36px;
+  padding: 7px 11px;
+  font-size: 12px;
+}
+
+.native-app .filter-btn {
+  min-width: 44px;
+  min-height: 44px;
+  justify-content: center;
+  padding: 9px;
+  border-radius: 12px;
+  font-size: 0;
+}
+
+.native-app .filter-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.native-app .filter-popover {
+  top: 50px;
+  width: min(230px, calc(100vw - 24px));
+}
+
+.native-app .map-card {
+  height: calc(100dvh - 203px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  min-height: 340px;
+  border-radius: 18px;
+  box-shadow: 0 12px 35px rgba(44, 53, 45, .1);
+}
+
+.native-app .leaflet-map .leaflet-control-zoom {
+  margin-top: 12px;
+  margin-right: 12px;
+}
+
+.native-app .leaflet-map .leaflet-control-attribution {
+  max-width: 58%;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 8px;
+}
+
+.native-app .map-legend {
+  left: 10px;
+  top: 10px;
+  bottom: auto;
+  max-width: calc(100% - 80px);
+  padding: 7px 9px;
+}
+
+.native-app .city-preview {
+  right: 10px;
+  bottom: 10px;
+  left: 10px;
+  width: auto;
+  min-height: 0;
+  grid-template-columns: 58px minmax(0, 1fr);
+  border-radius: 15px;
+}
+
+.native-app .photo-block {
+  min-height: 92px;
+  justify-content: center;
+  align-items: center;
+  padding: 8px;
+}
+
+.native-app .photo-block span {
+  font-size: 27px;
+}
+
+.native-app .photo-block small,
+.native-app .preview-copy > p:last-of-type {
+  display: none;
+}
+
+.native-app .preview-copy {
+  min-width: 0;
+  padding: 11px 38px 10px 12px;
+}
+
+.native-app .preview-copy h2 {
+  overflow: hidden;
+  font-size: 19px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.native-app .city-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.native-app .stars {
+  margin: 3px 0 5px;
+}
+
+.native-app .text-btn {
+  min-height: 24px;
+}
+
+.native-app .city-preview > .close-btn {
+  right: 7px;
+  top: 7px;
+}
+
+.native-app .mobile-nav {
+  position: fixed;
+  z-index: 1000;
+  left: max(8px, env(safe-area-inset-left));
+  right: max(8px, env(safe-area-inset-right));
+  bottom: max(8px, env(safe-area-inset-bottom));
+  height: 68px;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  align-items: center;
+  padding: 6px 5px;
+  border: 1px solid rgba(255,255,255,.85);
+  border-radius: 21px;
+  background: rgba(255,254,250,.94);
+  backdrop-filter: blur(22px);
+  box-shadow: 0 12px 38px rgba(34,40,34,.2);
+}
+
+.native-app .mobile-nav button {
+  min-width: 0;
+  min-height: 52px;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 3px 1px;
+  background: transparent;
+  color: #858a82;
+  font-size: 9px;
+}
+
+.native-app .mobile-nav button.active {
+  color: var(--green);
+  font-weight: 700;
+}
+
+.native-app .mobile-nav button svg {
+  width: 21px;
+  height: 21px;
+}
+
+.native-app .mobile-nav .add-mobile {
+  position: fixed;
+  right: max(18px, calc(env(safe-area-inset-right) + 10px));
+  bottom: calc(86px + env(safe-area-inset-bottom));
+  width: 56px;
+  height: 56px;
+  min-height: 56px;
+  border-radius: 50%;
+  color: white;
+  background: var(--green);
+  box-shadow: 0 10px 25px rgba(47,118,86,.36);
+  transition: opacity .2s ease, transform .2s ease;
+}
+
+.native-app .mobile-nav .add-mobile svg {
+  width: 25px;
+  height: 25px;
+}
+
+.native-app .app-shell:has(.city-preview) .mobile-nav .add-mobile {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(8px) scale(.9);
+}
+
+.native-app .modal-backdrop {
+  align-items: end;
+  padding: 0;
+}
+
+.native-app .add-modal,
+.native-app .auth-modal {
+  width: 100%;
+  max-width: none;
+  max-height: calc(94dvh - env(safe-area-inset-top));
+  padding: 20px 18px calc(20px + env(safe-area-inset-bottom));
+  border-radius: 24px 24px 0 0;
+}
+
+.native-app .modal-head {
+  margin-bottom: 18px;
+}
+
+.native-app .search-box {
+  height: 50px;
+}
+
+.native-app .suggestions .city-result {
+  min-height: 58px;
+}
+
+.native-app .rankings-layout,
+.native-app .log-layout,
+.native-app .lists-layout,
+.native-app .profile-layout {
+  max-width: none;
+}
+
+.native-app .rank-row {
+  grid-template-columns: 16px 25px 34px minmax(0, 1fr) 51px;
+  padding: 12px 9px;
+}
+
+.native-app .rank-bar {
+  display: none;
+}
+
+.native-app .rank-main strong {
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.native-app .rank-main small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.native-app .log-entry {
+  grid-template-columns: 58px 15px 31px minmax(0, 1fr) 46px;
+  gap: 3px;
+  padding: 12px 0;
+}
+
+.native-app .log-date {
+  font-size: 8px;
+}
+
+.native-app .personal-list,
+.native-app .compare-grid article {
+  padding: 15px;
+}
+
+.native-app .native-compare {
+  display: block;
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+
+.native-app .compare-grid,
+.native-app .compare-pickers {
+  grid-template-columns: 1fr;
+}
+
+.native-app .stats-grid {
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+}
+
+.native-app .stats-grid article {
+  display: block;
+  padding: 13px 10px;
+}
+
+.native-app .stats-grid article strong {
+  margin-top: 8px;
+  font-size: 25px;
+}
+
+.native-app .stats-grid article span {
+  font-size: 10px;
+}
+
+.native-app .insight-card,
+.native-app .year-card,
+.native-app .account-settings {
+  padding: 17px;
+}
+
+@media (max-width: 360px) {
+  .native-app .main-pane {
+    padding-inline: 8px;
+  }
+
+  .native-app .topbar h1 {
+    font-size: 21px;
+  }
+
+  .native-app .segmented button {
+    padding-inline: 9px;
+    font-size: 11px;
+  }
+
+  .native-app .mobile-nav {
+    left: 5px;
+    right: 5px;
+  }
+
+  .native-app .mobile-nav button span {
+    font-size: 8px;
+  }
+}
+
+@media (min-width: 700px) {
+  .native-app .main-pane {
+    max-width: 900px;
+    margin: 0 auto;
+    padding-inline: 24px;
+  }
+
+  .native-app .map-card {
+    min-height: 620px;
+  }
+}

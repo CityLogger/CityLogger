@@ -236,10 +236,10 @@ function InteractiveMap({
   return <div ref={mapElement} className="leaflet-map" aria-label="Interactive map of your rated cities" />;
 }
 
-export default function CityLogger() {
+export default function CityLogger({ nativeMode = false }: { nativeMode?: boolean }) {
   const [tab, setTab] = useState<"map" | "rankings" | "log" | "compare" | "lists" | "profile">("map");
   const [cities, setCities] = useState(starterCities);
-  const [selected, setSelected] = useState<City | null>(starterCities[0]);
+  const [selected, setSelected] = useState<City | null>(nativeMode ? null : starterCities[0]);
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
   const [candidate, setCandidate] = useState<CityOption | null>(null);
@@ -747,6 +747,29 @@ export default function CityLogger() {
                 </article>
               ))}
               <div className="new-list"><input aria-label="New list title" value={newListTitle} onChange={event => setNewListTitle(event.target.value)} onKeyDown={event => { if (event.key === "Enter") createList(); }} placeholder="Name a new list, e.g. Best food cities"/><button onClick={createList}><Plus/>Create list</button></div>
+              <section className="native-only native-compare">
+                <div className="section-heading"><span><GitCompareArrows/></span><div><p className="kicker">COMPARE CITIES</p><h2>Head to head</h2></div></div>
+                <div className="compare-pickers">
+                  {[0, 1].map(index => (
+                    <select key={index} aria-label={`Compare city ${index + 1}`} value={String(compareIds[index])} onChange={event => setCompareIds(current => {
+                      const next: [CityId, CityId] = [...current];
+                      next[index] = event.target.value;
+                      return next;
+                    })}>
+                      {cities.map(city => <option key={city.id} value={city.id}>{city.name}, {city.country}</option>)}
+                    </select>
+                  ))}
+                </div>
+                <div className="compare-grid">
+                  {compared.map((city, index) => (
+                    <article key={`native-${city.id}-${index}`}>
+                      <span className="compare-flag">{city.emoji}</span><h3>{city.name}</h3><small>{city.country}</small>
+                      <strong style={{ color: colorForScore(city.rating) }}>{city.rating.toFixed(1)}</strong>
+                      <div className="compare-ratings">{requiredRatingKeys.map(key => <p key={key}><span>{key === "personal" ? "Experience" : key}</span><b>{city.ratings[key]?.toFixed(1)}</b></p>)}</div>
+                    </article>
+                  ))}
+                </div>
+              </section>
             </section>
           </div>
         )}
@@ -811,7 +834,7 @@ export default function CityLogger() {
         <button className={tab === "rankings" ? "active" : ""} onClick={() => setTab("rankings")}><Trophy/><span>Rankings</span></button>
         <button className="add-mobile" onClick={() => setAdding(true)}><Plus/></button>
         <button className={tab === "log" ? "active" : ""} onClick={() => setTab("log")}><BookOpen/><span>Log</span></button>
-        <button className={tab === "compare" ? "active" : ""} onClick={() => setTab("compare")}><GitCompareArrows/><span>Compare</span></button>
+        <button className={`compare-tab ${tab === "compare" ? "active" : ""}`} onClick={() => setTab("compare")}><GitCompareArrows/><span>Compare</span></button>
         <button className={tab === "lists" ? "active" : ""} onClick={() => setTab("lists")}><ListPlus/><span>Lists</span></button>
         <button className={tab === "profile" ? "active" : ""} onClick={() => setTab("profile")}><UserRound/><span>Profile</span></button>
       </nav>

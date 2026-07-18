@@ -2,6 +2,9 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import CityLogger from "../../src/frontend/CityLogger";
 import "../../src/frontend/styles.css";
+import "./native.css";
+
+document.documentElement.classList.add("native-app");
 
 const root = document.getElementById("root");
 
@@ -11,6 +14,6 @@ if (!root) {
 
 createRoot(root).render(
   <React.StrictMode>
-    <CityLogger />
+    <CityLogger nativeMode />
   </React.StrictMode>
 );

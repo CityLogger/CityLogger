@@ -201,6 +201,7 @@ h1 { font-size: clamp(27px, 3vw, 42px); line-height: 1.05; }
 .settings-actions button, .settings-actions a { border: 1px solid var(--line); border-radius: 9px; padding: 9px 12px; color: var(--ink); background: #fafaf6; text-decoration: none; font: inherit; font-size: 12px; cursor: pointer; }
 .settings-actions .danger { color: #b44843; border-color: #e5c3c0; }
 .mobile-nav { display: none; }
+.native-only { display: none; }
 .modal-backdrop { position: fixed; inset: 0; background: rgba(27,31,27,.43); backdrop-filter: blur(5px); z-index: 20; display: grid; place-items: center; padding: 20px; }
 .add-modal { width: min(620px, 100%); max-height: calc(100vh - 40px); overflow-y: auto; border-radius: 22px; background: var(--card); box-shadow: 0 30px 100px rgba(20,25,20,.25); padding: 26px; }
 .modal-head { display: grid; grid-template-columns: 32px 1fr 32px; gap: 10px; align-items: start; margin-bottom: 24px; }
