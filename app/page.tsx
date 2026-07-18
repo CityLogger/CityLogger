@@ -232,7 +232,7 @@ function InteractiveMap({
 }
 
 export default function CityLogger() {
-  const [tab, setTab] = useState<"map" | "rankings" | "log" | "profile">("map");
+  const [tab, setTab] = useState<"map" | "rankings" | "log" | "compare" | "lists" | "profile">("map");
   const [cities, setCities] = useState(starterCities);
   const [selected, setSelected] = useState<City | null>(starterCities[0]);
   const [adding, setAdding] = useState(false);
@@ -392,6 +392,8 @@ export default function CityLogger() {
           <button className={tab === "map" ? "active" : ""} onClick={() => setTab("map")}><MapIcon/>Map</button>
           <button className={tab === "rankings" ? "active" : ""} onClick={() => setTab("rankings")}><Trophy/>Rankings</button>
           <button className={tab === "log" ? "active" : ""} onClick={() => setTab("log")}><BookOpen/>Log</button>
+          <button className={tab === "compare" ? "active" : ""} onClick={() => setTab("compare")}><GitCompareArrows/>Compare</button>
+          <button className={tab === "lists" ? "active" : ""} onClick={() => setTab("lists")}><ListPlus/>My Lists</button>
           <button className={tab === "profile" ? "active" : ""} onClick={() => setTab("profile")}><UserRound/>Profile</button>
         </nav>
         <div className="sidebar-card">
@@ -407,8 +409,8 @@ export default function CityLogger() {
       <section className="main-pane">
         <header className="topbar">
           <div>
-            <p className="kicker">{tab === "map" ? "YOUR TRAVEL MAP" : tab === "rankings" ? "YOUR FAVOURITES" : tab === "log" ? "YOUR TRAVEL LOG" : "YOUR JOURNEY"}</p>
-            <h1>{tab === "map" ? "The world, according to you." : tab === "rankings" ? "Cities worth returning to." : tab === "log" ? "Every trip, in order." : "A life well travelled."}</h1>
+            <p className="kicker">{tab === "map" ? "YOUR TRAVEL MAP" : tab === "rankings" ? "YOUR FAVOURITES" : tab === "log" ? "YOUR TRAVEL LOG" : tab === "compare" ? "CITY HEAD TO HEAD" : tab === "lists" ? "YOUR COLLECTIONS" : "YOUR JOURNEY"}</p>
+            <h1>{tab === "map" ? "The world, according to you." : tab === "rankings" ? "Cities worth returning to." : tab === "log" ? "Every trip, in order." : tab === "compare" ? "How do your cities compare?" : tab === "lists" ? "Save places your way." : "A life well travelled."}</h1>
           </div>
           <button className="primary-btn" onClick={() => setAdding(true)}><Plus/>Log a city</button>
         </header>
@@ -483,7 +485,12 @@ export default function CityLogger() {
                 </button>
               ))}
             </div>
-            <section className="compare-section">
+          </div>
+        )}
+
+        {tab === "compare" && (
+          <div className="compare-layout">
+            <section className="compare-section standalone-section">
               <div className="section-heading"><span><GitCompareArrows/></span><div><p className="kicker">COMPARE CITIES</p><h2>Head to head</h2></div></div>
               <div className="compare-pickers">
                 {[0, 1].map(index => (
@@ -506,7 +513,12 @@ export default function CityLogger() {
                 ))}
               </div>
             </section>
-            <section className="lists-section">
+          </div>
+        )}
+
+        {tab === "lists" && (
+          <div className="lists-layout">
+            <section className="lists-section standalone-section">
               <div className="section-heading"><span><ListPlus/></span><div><p className="kicker">MY LISTS</p><h2>Your collections</h2></div></div>
               <article className="personal-list want-list">
                 <div><span className="list-icon"><Heart fill="currentColor"/></span><span><h3>Want to Visit</h3><small>{wishlist.length} saved cities · purple on your map</small></span></div>
@@ -554,6 +566,8 @@ export default function CityLogger() {
         <button className={tab === "rankings" ? "active" : ""} onClick={() => setTab("rankings")}><Trophy/><span>Rankings</span></button>
         <button className="add-mobile" onClick={() => setAdding(true)}><Plus/></button>
         <button className={tab === "log" ? "active" : ""} onClick={() => setTab("log")}><BookOpen/><span>Log</span></button>
+        <button className={tab === "compare" ? "active" : ""} onClick={() => setTab("compare")}><GitCompareArrows/><span>Compare</span></button>
+        <button className={tab === "lists" ? "active" : ""} onClick={() => setTab("lists")}><ListPlus/><span>Lists</span></button>
         <button className={tab === "profile" ? "active" : ""} onClick={() => setTab("profile")}><UserRound/><span>Profile</span></button>
       </nav>
 

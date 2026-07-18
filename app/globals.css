@@ -124,6 +124,8 @@ h1 { font-size: clamp(27px, 3vw, 42px); line-height: 1.05; }
 .log-line i { position: relative; z-index: 1; width: 9px; height: 9px; border-radius: 50%; background: #b7bbb3; border: 2px solid var(--paper); }
 .log-line i.latest { width: 12px; height: 12px; background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
 .compare-section, .lists-section { margin-top: 56px; padding-top: 34px; border-top: 1px solid var(--line); }
+.compare-layout, .lists-layout { max-width: 980px; }
+.standalone-section { margin-top: 0; padding-top: 0; border-top: 0; }
 .section-heading { display: flex; align-items: center; gap: 13px; margin-bottom: 18px; }
 .section-heading > span { width: 42px; height: 42px; border-radius: 13px; display: grid; place-items: center; color: var(--green); background: var(--green-soft); }
 .section-heading h2 { font-size: 24px; }
@@ -249,10 +251,10 @@ h1 { font-size: clamp(27px, 3vw, 42px); line-height: 1.05; }
   .app-shell { grid-template-columns: 1fr; }
   .sidebar { display: none; }
   .main-pane { padding: 24px 18px 100px; }
-  .mobile-nav { display: grid; position: fixed; z-index: 10; left: 12px; right: 12px; bottom: 12px; height: 66px; grid-template-columns: 1fr 1fr 74px 1fr 1fr; align-items: center; padding: 5px 10px; border: 1px solid rgba(255,255,255,.8); border-radius: 20px; background: rgba(255,254,250,.92); backdrop-filter: blur(18px); box-shadow: 0 14px 45px rgba(34,40,34,.18); }
+  .mobile-nav { display: grid; position: fixed; z-index: 10; left: 12px; right: 12px; bottom: 12px; height: 66px; grid-template-columns: repeat(7,1fr); align-items: center; padding: 5px 8px; border: 1px solid rgba(255,255,255,.8); border-radius: 20px; background: rgba(255,254,250,.92); backdrop-filter: blur(18px); box-shadow: 0 14px 45px rgba(34,40,34,.18); }
   .mobile-nav button { border: 0; background: transparent; color: #898c85; display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 9px; cursor: pointer; }
   .mobile-nav button.active { color: var(--green); }
-  .mobile-nav .add-mobile { width: 52px; height: 52px; border-radius: 50%; background: var(--green); color: white; justify-self: center; transform: translateY(-17px); box-shadow: 0 8px 22px rgba(47,118,86,.3); }
+  .mobile-nav .add-mobile { width: 44px; height: 44px; border-radius: 50%; background: var(--green); color: white; justify-self: center; transform: translateY(-14px); box-shadow: 0 8px 22px rgba(47,118,86,.3); }
   .map-card { min-height: 650px; }
 }
 @media (max-width: 600px) {
