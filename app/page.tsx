@@ -2,8 +2,8 @@
 
 import {
   ArrowLeft, BookOpen, CalendarDays, Camera, Check, ChevronDown, Compass, Filter,
-  ListFilter, Map as MapIcon, MapPin, Plus, Search, SlidersHorizontal,
-  Sparkles, Star, Trophy, UserRound, X
+  GitCompareArrows, GripVertical, Heart, ListFilter, ListPlus, Map as MapIcon, MapPin,
+  Plus, Search, SlidersHorizontal, Sparkles, Star, Trophy, UserRound, X
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -20,6 +20,8 @@ type CityOption = {
   name: string; ascii?: string; country: string; continent: string;
   lat: number; lng: number; emoji: string; population?: number;
 };
+
+type PersonalList = { id: number; title: string; cityIds: number[] };
 
 const starterCities: City[] = [
   { id: 1, name: "Lisbon", country: "Portugal", continent: "Europe", lat: 38.72, lng: -9.14, rating: 4.7, ratings: { personal: 5, culture: 4.5, architecture: 4.5, food: 5, nature: 4, nightlife: 5 }, dateFrom: "2025-05-09", dateTo: "2025-05-15", visitType: "Holiday", note: "Golden evenings, tiled streets and the best small plates.", emoji: "🇵🇹" },
@@ -104,11 +106,13 @@ function CategoryRating({
 
 function InteractiveMap({
   cities,
+  wishlist,
   selected,
   onSelect,
   scoreCategory
 }: {
   cities: City[];
+  wishlist: CityOption[];
   selected: City | null;
   onSelect: (city: City) => void;
   scoreCategory: string;
@@ -201,11 +205,23 @@ function InteractiveMap({
           if (map.getZoom() < 6) map.flyTo([city.lat, city.lng], 6, { duration: 0.8 });
         });
       });
+
+      wishlist.forEach(city => {
+        const icon = L.divIcon({
+          className: "city-div-icon",
+          html: `<div class="city-map-marker wishlist-marker"><span class="city-marker-label">${city.name} · Want to visit</span></div>`,
+          iconSize: [26, 26],
+          iconAnchor: [13, 13]
+        });
+        L.marker([city.lat, city.lng], { icon, title: `${city.name} · Want to visit`, riseOnHover: true })
+          .bindTooltip(`<strong>${city.name}</strong><br>${city.country} · Want to visit`, { direction: "top", offset: [0, -13], className: "city-tooltip" })
+          .addTo(layer);
+      });
     }
 
     drawMarkers();
     return () => { cancelled = true; };
-  }, [cities, selected, onSelect, scoreCategory]);
+  }, [cities, wishlist, selected, onSelect, scoreCategory]);
 
   useEffect(() => () => {
     mapInstance.current?.remove();
@@ -232,6 +248,17 @@ export default function CityLogger() {
   const [category, setCategory] = useState("Overall");
   const [filterOpen, setFilterOpen] = useState(false);
   const [continent, setContinent] = useState("All");
+  const [wishlist, setWishlist] = useState<CityOption[]>([
+    { name: "Mexico City", country: "Mexico", continent: "North America", lat: 19.43, lng: -99.13, emoji: "🇲🇽" },
+    { name: "Hanoi", country: "Vietnam", continent: "Asia", lat: 21.03, lng: 105.85, emoji: "🇻🇳" }
+  ]);
+  const [manualOrder, setManualOrder] = useState<number[] | null>(null);
+  const [draggedCity, setDraggedCity] = useState<number | null>(null);
+  const [compareIds, setCompareIds] = useState<[number, number]>([starterCities[0].id, starterCities[1].id]);
+  const [lists, setLists] = useState<PersonalList[]>([
+    { id: 1, title: "Most underrated", cityIds: [starterCities[0].id, starterCities[4].id, starterCities[2].id] }
+  ]);
+  const [newListTitle, setNewListTitle] = useState("");
 
   const filtered = useMemo(() =>
     cities.filter(city =>
@@ -245,6 +272,12 @@ export default function CityLogger() {
     a.name.localeCompare(b.name)
   ), [filtered, category]);
   const chronological = useMemo(() => [...cities].sort((a, b) => b.dateFrom.localeCompare(a.dateFrom)), [cities]);
+  const displayedRanked = useMemo(() => {
+    if (!manualOrder) return ranked;
+    const positions = new Map(manualOrder.map((id, index) => [id, index]));
+    return [...ranked].sort((a, b) => (positions.get(a.id) ?? 999) - (positions.get(b.id) ?? 999));
+  }, [ranked, manualOrder]);
+  const compared = compareIds.map(id => cities.find(city => city.id === id) || cities[0]);
   const draftOverall = calculateOverall(ratings);
   const requiredRatingsComplete = requiredRatingKeys.every(key => ratings[key] !== null && (ratings[key] || 0) > 0);
 
@@ -316,6 +349,41 @@ export default function CityLogger() {
     setSelected(newCity); setAdding(false); setCandidate(null); setQuery(""); setTab("map");
   }
 
+  function addWantToVisit(city: CityOption) {
+    setWishlist(current => current.some(item => item.name === city.name && item.country === city.country)
+      ? current.filter(item => !(item.name === city.name && item.country === city.country))
+      : [...current, city]);
+  }
+
+  function reorderRanking(targetId: number) {
+    if (draggedCity === null || draggedCity === targetId) return;
+    const order = displayedRanked.map(city => city.id);
+    const from = order.indexOf(draggedCity);
+    const to = order.indexOf(targetId);
+    order.splice(to, 0, order.splice(from, 1)[0]);
+    setManualOrder(order);
+    setDraggedCity(null);
+  }
+
+  function createList() {
+    const title = newListTitle.trim();
+    if (!title) return;
+    setLists(current => [...current, { id: Date.now(), title, cityIds: [] }]);
+    setNewListTitle("");
+  }
+
+  function moveListCity(listId: number, cityId: number, direction: -1 | 1) {
+    setLists(current => current.map(list => {
+      if (list.id !== listId) return list;
+      const cityIds = [...list.cityIds];
+      const index = cityIds.indexOf(cityId);
+      const next = index + direction;
+      if (next < 0 || next >= cityIds.length) return list;
+      [cityIds[index], cityIds[next]] = [cityIds[next], cityIds[index]];
+      return { ...list, cityIds };
+    }));
+  }
+
   return (
     <main className="app-shell">
       <aside className="sidebar">
@@ -361,8 +429,8 @@ export default function CityLogger() {
             </div>
 
             <div className="map-card">
-              <InteractiveMap cities={filtered} selected={selected} onSelect={setSelected} scoreCategory={category}/>
-              <div className="map-legend"><span>≤2</span>{["#CD554F","#E28A43","#D4B849","#62A461","#236844"].map(c => <i key={c} style={{ background: c }}/>) }<span>4.5+</span></div>
+              <InteractiveMap cities={filtered} wishlist={wishlist} selected={selected} onSelect={setSelected} scoreCategory={category}/>
+              <div className="map-legend"><span>≤2</span>{["#CD554F","#E28A43","#D4B849","#62A461","#236844"].map(c => <i key={c} style={{ background: c }}/>) }<span>4.5+</span><i className="purple-key"/><span>Want to visit</span></div>
               {selected && filtered.some(c => c.id === selected.id) && (
                 <article className="city-preview">
                   <button className="close-btn" onClick={() => setSelected(null)} aria-label="Close"><X/></button>
@@ -384,17 +452,18 @@ export default function CityLogger() {
           <div className="rankings-layout">
             <div className="rankings-head">
               <div className="segmented">{categories.map(item => <button key={item} className={category === item ? "active" : ""} onClick={() => setCategory(item)}>{item}</button>)}</div>
-              <button className="filter-btn"><ListFilter/>Sort: Highest rated <ChevronDown/></button>
+              <button className="filter-btn" onClick={() => setManualOrder(manualOrder ? null : displayedRanked.map(city => city.id))}><ListFilter/>{manualOrder ? "Custom order · Reset" : "Drag to reorder"}<ChevronDown/></button>
             </div>
             <div className="ranking-list">
-              {ranked.map((city, index) => (
-                <button className="rank-row" key={city.id} onClick={() => { setSelected(city); setTab("map"); }}>
+              {displayedRanked.map((city, index) => (
+                <div className={`rank-row ${draggedCity === city.id ? "dragging" : ""}`} key={city.id} draggable onDragStart={() => setDraggedCity(city.id)} onDragOver={event => event.preventDefault()} onDrop={() => reorderRanking(city.id)}>
+                  <GripVertical className="drag-handle" aria-label="Drag to reorder"/>
                   <span className={`rank-number ${index < 3 ? "top" : ""}`}>{index + 1}</span>
                   <span className="rank-flag">{city.emoji}</span>
-                  <span className="rank-main"><strong>{city.name}</strong><small>{city.country} · {formatVisitDate(city.dateFrom, city.dateTo)}</small></span>
+                  <button className="rank-main rank-city-link" onClick={() => { setSelected(city); setTab("map"); }}><strong>{city.name}</strong><small>{city.country} · {formatVisitDate(city.dateFrom, city.dateTo)}</small></button>
                   <span className="rank-rating"><strong>{(scoreFor(city, category) || 0).toFixed(1)}</strong><Star fill={colorForScore(scoreFor(city, category) || 0)} color={colorForScore(scoreFor(city, category) || 0)}/></span>
                   <span className="rank-bar"><i style={{ width: `${(scoreFor(city, category) || 0) * 20}%`, background: colorForScore(scoreFor(city, category) || 0) }}/></span>
-                </button>
+                </div>
               ))}
             </div>
           </div>
@@ -414,6 +483,52 @@ export default function CityLogger() {
                 </button>
               ))}
             </div>
+            <section className="compare-section">
+              <div className="section-heading"><span><GitCompareArrows/></span><div><p className="kicker">COMPARE CITIES</p><h2>Head to head</h2></div></div>
+              <div className="compare-pickers">
+                {[0, 1].map(index => (
+                  <select key={index} aria-label={`Compare city ${index + 1}`} value={compareIds[index]} onChange={event => setCompareIds(current => {
+                    const next: [number, number] = [...current];
+                    next[index] = Number(event.target.value);
+                    return next;
+                  })}>
+                    {cities.map(city => <option key={city.id} value={city.id}>{city.name}, {city.country}</option>)}
+                  </select>
+                ))}
+              </div>
+              <div className="compare-grid">
+                {compared.map((city, index) => (
+                  <article key={`${city.id}-${index}`}>
+                    <span className="compare-flag">{city.emoji}</span><h3>{city.name}</h3><small>{city.country}</small>
+                    <strong style={{ color: colorForScore(city.rating) }}>{city.rating.toFixed(1)}</strong>
+                    <div className="compare-ratings">{requiredRatingKeys.map(key => <p key={key}><span>{key === "personal" ? "Experience" : key}</span><b>{city.ratings[key]?.toFixed(1)}</b></p>)}</div>
+                  </article>
+                ))}
+              </div>
+            </section>
+            <section className="lists-section">
+              <div className="section-heading"><span><ListPlus/></span><div><p className="kicker">MY LISTS</p><h2>Your collections</h2></div></div>
+              <article className="personal-list want-list">
+                <div><span className="list-icon"><Heart fill="currentColor"/></span><span><h3>Want to Visit</h3><small>{wishlist.length} saved cities · purple on your map</small></span></div>
+                <div className="list-cities">{wishlist.map((city, index) => <span key={`${city.name}-${city.country}`}><b>{index + 1}</b>{city.emoji} {city.name}<button aria-label={`Remove ${city.name}`} onClick={() => addWantToVisit(city)}><X/></button></span>)}</div>
+              </article>
+              {lists.map(list => (
+                <article className="personal-list" key={list.id}>
+                  <div><span className="list-icon"><ListFilter/></span><span><h3>{list.title}</h3><small>{list.cityIds.length} cities · order it your way</small></span></div>
+                  <div className="list-cities">
+                    {list.cityIds.map((id, index) => {
+                      const city = cities.find(item => item.id === id);
+                      return city ? <span key={id}><b>{index + 1}</b>{city.emoji} {city.name}<span className="list-order"><button disabled={index === 0} onClick={() => moveListCity(list.id, id, -1)}>↑</button><button disabled={index === list.cityIds.length - 1} onClick={() => moveListCity(list.id, id, 1)}>↓</button></span></span> : null;
+                    })}
+                    <select aria-label={`Add city to ${list.title}`} value="" onChange={event => {
+                      const id = Number(event.target.value);
+                      if (id) setLists(current => current.map(item => item.id === list.id && !item.cityIds.includes(id) ? { ...item, cityIds: [...item.cityIds, id] } : item));
+                    }}><option value="">+ Add a city</option>{cities.filter(city => !list.cityIds.includes(city.id)).map(city => <option key={city.id} value={city.id}>{city.name}</option>)}</select>
+                  </div>
+                </article>
+              ))}
+              <div className="new-list"><input aria-label="New list title" value={newListTitle} onChange={event => setNewListTitle(event.target.value)} onKeyDown={event => { if (event.key === "Enter") createList(); }} placeholder="Name a new list, e.g. Best food cities"/><button onClick={createList}><Plus/>Create list</button></div>
+            </section>
           </div>
         )}
 
@@ -456,7 +571,10 @@ export default function CityLogger() {
                 <p className="section-label">{query ? searching ? "SEARCHING 234,000+ CITIES…" : "SEARCH RESULTS" : "SUGGESTED FOR YOU"}</p>
                 <div className="suggestions">
                   {searchResults.map(city => (
-                    <button key={`${city.name}-${city.country}-${city.lat}`} onClick={() => beginAdd(city)}><span>{city.emoji}</span><span><strong>{city.name}</strong><small>{city.country} · {city.continent}{city.population ? ` · ${city.population.toLocaleString()} people` : ""}</small></span><Plus/></button>
+                    <div className="suggestion-row" key={`${city.name}-${city.country}-${city.lat}`}>
+                      <button className="city-result" onClick={() => beginAdd(city)}><span>{city.emoji}</span><span><strong>{city.name}</strong><small>{city.country} · {city.continent}{city.population ? ` · ${city.population.toLocaleString()} people` : ""}</small></span><Plus/></button>
+                      <button className={`want-btn ${wishlist.some(item => item.name === city.name && item.country === city.country) ? "saved" : ""}`} onClick={() => addWantToVisit(city)} aria-label={`${wishlist.some(item => item.name === city.name && item.country === city.country) ? "Remove" : "Add"} ${city.name} ${wishlist.some(item => item.name === city.name && item.country === city.country) ? "from" : "to"} Want to Visit`}><Heart fill={wishlist.some(item => item.name === city.name && item.country === city.country) ? "currentColor" : "none"}/></button>
+                    </div>
                   ))}
                   {!searching && query.length >= 2 && searchResults.length === 0 && <div className="empty-search">No matching city found. Try another spelling.</div>}
                 </div>
