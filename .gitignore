@@ -1,5 +1,6 @@
 node_modules/
 .next/
+.vinext/
 dist/
 dist-mobile/
 outputs/
@@ -8,3 +9,4 @@ outputs/
 .env*
 !.env.example
 work/
+supabase/.temp/

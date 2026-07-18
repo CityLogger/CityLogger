@@ -320,6 +320,11 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
     supabase.auth.getSession().then(({ data }) => {
       setUser(data.session?.user || null);
       setAuthReady(true);
+      if (window.sessionStorage.getItem("citylogger-password-recovery") === "true") {
+        window.sessionStorage.removeItem("citylogger-password-recovery");
+        setAuthView("reset");
+        setAuthOpen(true);
+      }
     });
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user || null);
