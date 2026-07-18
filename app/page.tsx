@@ -1,15 +1,19 @@
 "use client";
 
 import {
-  ArrowLeft, CalendarDays, Camera, Check, ChevronDown, Compass, Filter,
-  Heart, ListFilter, Map as MapIcon, MapPin, Plus, Search, SlidersHorizontal,
+  ArrowLeft, BookOpen, CalendarDays, Camera, Check, ChevronDown, Compass, Filter,
+  ListFilter, Map as MapIcon, MapPin, Plus, Search, SlidersHorizontal,
   Sparkles, Star, Trophy, UserRound, X
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+type RatingKey = "personal" | "culture" | "architecture" | "food" | "nature" | "nightlife";
+type Ratings = Record<RatingKey, number | null>;
+
 type City = {
   id: number; name: string; country: string; continent: string; lat: number; lng: number;
-  rating: number; category: string; date: string; note: string; emoji: string;
+  rating: number; ratings: Ratings; dateFrom: string; dateTo: string;
+  visitType: string; note: string; emoji: string;
 };
 
 type CityOption = {
@@ -18,12 +22,12 @@ type CityOption = {
 };
 
 const starterCities: City[] = [
-  { id: 1, name: "Lisbon", country: "Portugal", continent: "Europe", lat: 38.72, lng: -9.14, rating: 5, category: "Food", date: "May 2025", note: "Golden evenings, tiled streets and the best small plates.", emoji: "🇵🇹" },
-  { id: 2, name: "Kyoto", country: "Japan", continent: "Asia", lat: 35.01, lng: 135.77, rating: 5, category: "Culture", date: "Oct 2024", note: "Quiet gardens before breakfast. A city that rewards slowing down.", emoji: "🇯🇵" },
-  { id: 3, name: "Cape Town", country: "South Africa", continent: "Africa", lat: -33.93, lng: 18.42, rating: 4, category: "Nature", date: "Feb 2025", note: "Mountains, ocean and long lunches.", emoji: "🇿🇦" },
-  { id: 4, name: "New York", country: "United States", continent: "North America", lat: 40.71, lng: -74.01, rating: 4, category: "Culture", date: "Sep 2023", note: "Endless energy. Walked everywhere.", emoji: "🇺🇸" },
-  { id: 5, name: "Marrakech", country: "Morocco", continent: "Africa", lat: 31.63, lng: -8.0, rating: 3, category: "Food", date: "Mar 2024", note: "Intense, colourful and unforgettable.", emoji: "🇲🇦" },
-  { id: 6, name: "Reykjavík", country: "Iceland", continent: "Europe", lat: 64.15, lng: -21.94, rating: 4, category: "Nature", date: "Jan 2023", note: "Small city, enormous landscapes.", emoji: "🇮🇸" }
+  { id: 1, name: "Lisbon", country: "Portugal", continent: "Europe", lat: 38.72, lng: -9.14, rating: 4.7, ratings: { personal: 5, culture: 4.5, architecture: 4.5, food: 5, nature: 4, nightlife: 5 }, dateFrom: "2025-05-09", dateTo: "2025-05-15", visitType: "Holiday", note: "Golden evenings, tiled streets and the best small plates.", emoji: "🇵🇹" },
+  { id: 2, name: "Kyoto", country: "Japan", continent: "Asia", lat: 35.01, lng: 135.77, rating: 4.7, ratings: { personal: 5, culture: 5, architecture: 5, food: 4.5, nature: 4, nightlife: null }, dateFrom: "2024-10-12", dateTo: "2024-10-19", visitType: "Holiday", note: "Quiet gardens before breakfast. A city that rewards slowing down.", emoji: "🇯🇵" },
+  { id: 3, name: "Cape Town", country: "South Africa", continent: "Africa", lat: -33.93, lng: 18.42, rating: 4.4, ratings: { personal: 4.5, culture: 4, architecture: 4, food: 4.5, nature: 5, nightlife: 4.5 }, dateFrom: "2025-02-03", dateTo: "2025-02-12", visitType: "Holiday", note: "Mountains, ocean and long lunches.", emoji: "🇿🇦" },
+  { id: 4, name: "New York", country: "United States", continent: "North America", lat: 40.71, lng: -74.01, rating: 4.3, ratings: { personal: 4.5, culture: 5, architecture: 4.5, food: 4.5, nature: 3, nightlife: 4.5 }, dateFrom: "2023-09-18", dateTo: "2023-09-25", visitType: "City break", note: "Endless energy. Walked everywhere.", emoji: "🇺🇸" },
+  { id: 5, name: "Marrakech", country: "Morocco", continent: "Africa", lat: 31.63, lng: -8.0, rating: 3.6, ratings: { personal: 3.5, culture: 4, architecture: 4.5, food: 4, nature: 3, nightlife: 2.5 }, dateFrom: "2024-03-06", dateTo: "2024-03-10", visitType: "City break", note: "Intense, colourful and unforgettable.", emoji: "🇲🇦" },
+  { id: 6, name: "Reykjavík", country: "Iceland", continent: "Europe", lat: 64.15, lng: -21.94, rating: 4.1, ratings: { personal: 4, culture: 3.5, architecture: 3.5, food: 3.5, nature: 5, nightlife: null }, dateFrom: "2023-01-14", dateTo: "2023-01-19", visitType: "Road trip", note: "Small city, enormous landscapes.", emoji: "🇮🇸" }
 ];
 
 const suggestions: CityOption[] = [
@@ -34,21 +38,80 @@ const suggestions: CityOption[] = [
   { name: "Seoul", country: "South Korea", continent: "Asia", lat: 37.57, lng: 126.98, emoji: "🇰🇷" }
 ];
 
-const colors = ["", "#D66055", "#E58D52", "#D6B44D", "#81AA66", "#3E9367"];
-const categories = ["Overall", "Food", "Culture", "Nature", "Nightlife"];
+const categories = ["Overall", "Personal", "Culture", "Architecture", "Food", "Nature", "Nightlife"];
+const requiredRatingKeys: RatingKey[] = ["personal", "culture", "architecture", "food"];
+const optionalRatingKeys: RatingKey[] = ["nature", "nightlife"];
+const colorForScore = (score: number) =>
+  score > 4.5 ? "#236844" :
+  score > 4 ? "#62A461" :
+  score > 3 ? "#D4B849" :
+  score > 2 ? "#E28A43" : "#CD554F";
+const scoreFor = (city: City, category: string) =>
+  category === "Overall" ? city.rating : city.ratings[category.toLowerCase() as RatingKey];
+const calculateOverall = (ratings: Ratings) => {
+  const values = Object.values(ratings).filter((value): value is number => value !== null && value > 0);
+  return values.length ? Math.round((values.reduce((sum, value) => sum + value, 0) / values.length) * 10) / 10 : 0;
+};
+const formatVisitDate = (from: string, to: string) => {
+  const formatter = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  const start = formatter.format(new Date(`${from}T12:00:00`));
+  if (!to || to === from) return start;
+  return `${start} – ${formatter.format(new Date(`${to}T12:00:00`))}`;
+};
 const normalizeSearch = (value: string) => value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 const countryFlag = (code: string) => code.length === 2
   ? String.fromCodePoint(...code.toUpperCase().split("").map(char => 127397 + char.charCodeAt(0)))
   : "🌍";
 
+function CategoryRating({
+  label,
+  value,
+  optional = false,
+  onChange
+}: {
+  label: string;
+  value: number | null;
+  optional?: boolean;
+  onChange: (value: number | null) => void;
+}) {
+  if (optional && value === null) {
+    return (
+      <div className="category-rating optional-empty">
+        <span><strong>{label}</strong><small>Optional</small></span>
+        <button type="button" onClick={() => onChange(3.5)}>+ Add rating</button>
+      </div>
+    );
+  }
+
+  return (
+    <label className="category-rating">
+      <span><strong>{label}</strong>{optional && <button type="button" onClick={() => onChange(null)}>Remove</button>}</span>
+      <div>
+        <input
+          type="range"
+          min="1"
+          max="5"
+          step="0.5"
+          value={value || 1}
+          onChange={event => onChange(Number(event.target.value))}
+          aria-label={`${label} rating`}
+        />
+        <output style={{ background: colorForScore(value || 1) }}>{(value || 1).toFixed(1)}</output>
+      </div>
+    </label>
+  );
+}
+
 function InteractiveMap({
   cities,
   selected,
-  onSelect
+  onSelect,
+  scoreCategory
 }: {
   cities: City[];
   selected: City | null;
   onSelect: (city: City) => void;
+  scoreCategory: string;
 }) {
   const mapElement = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<import("leaflet").Map | null>(null);
@@ -112,9 +175,11 @@ function InteractiveMap({
 
       cities.forEach(city => {
         const isSelected = selected?.id === city.id;
+        const displayScore = scoreFor(city, scoreCategory);
+        if (displayScore === null) return;
         const icon = L.divIcon({
           className: "city-div-icon",
-          html: `<div class="city-map-marker${isSelected ? " is-selected" : ""}" style="--marker-color:${colors[city.rating]}">
+          html: `<div class="city-map-marker${isSelected ? " is-selected" : ""}" style="--marker-color:${colorForScore(displayScore)}">
             <span class="city-marker-label">${city.name}</span>
           </div>`,
           iconSize: [38, 38],
@@ -123,12 +188,12 @@ function InteractiveMap({
 
         const marker = L.marker([city.lat, city.lng], {
           icon,
-          title: `${city.name}, ${city.rating} stars`,
+          title: `${city.name}, ${displayScore.toFixed(1)} stars`,
           riseOnHover: true
         }).addTo(layer);
 
         marker.bindTooltip(
-          `<strong>${city.name}</strong><br>${city.country} · ${city.rating}/5`,
+          `<strong>${city.name}</strong><br>${city.country} · ${displayScore.toFixed(1)}/5 ${scoreCategory.toLowerCase()}`,
           { direction: "top", offset: [0, -18], className: "city-tooltip" }
         );
         marker.on("click", () => {
@@ -140,7 +205,7 @@ function InteractiveMap({
 
     drawMarkers();
     return () => { cancelled = true; };
-  }, [cities, selected, onSelect]);
+  }, [cities, selected, onSelect, scoreCategory]);
 
   useEffect(() => () => {
     mapInstance.current?.remove();
@@ -151,7 +216,7 @@ function InteractiveMap({
 }
 
 export default function CityLogger() {
-  const [tab, setTab] = useState<"map" | "rankings" | "profile">("map");
+  const [tab, setTab] = useState<"map" | "rankings" | "log" | "profile">("map");
   const [cities, setCities] = useState(starterCities);
   const [selected, setSelected] = useState<City | null>(starterCities[0]);
   const [adding, setAdding] = useState(false);
@@ -159,17 +224,29 @@ export default function CityLogger() {
   const [candidate, setCandidate] = useState<CityOption | null>(null);
   const [searchResults, setSearchResults] = useState<CityOption[]>(suggestions);
   const [searching, setSearching] = useState(false);
-  const [rating, setRating] = useState(0);
+  const [ratings, setRatings] = useState<Ratings>({ personal: 4, culture: 4, architecture: 4, food: 4, nature: null, nightlife: null });
+  const [dateFrom, setDateFrom] = useState("2026-07-01");
+  const [dateTo, setDateTo] = useState("2026-07-05");
+  const [visitType, setVisitType] = useState("");
   const [note, setNote] = useState("");
   const [category, setCategory] = useState("Overall");
   const [filterOpen, setFilterOpen] = useState(false);
   const [continent, setContinent] = useState("All");
 
   const filtered = useMemo(() =>
-    cities.filter(c => (continent === "All" || c.continent === continent) &&
-      (category === "Overall" || c.category === category)), [cities, continent, category]);
+    cities.filter(city =>
+      (continent === "All" || city.continent === continent) &&
+      scoreFor(city, category) !== null
+    ), [cities, continent, category]);
 
-  const ranked = useMemo(() => [...filtered].sort((a, b) => b.rating - a.rating || a.name.localeCompare(b.name)), [filtered]);
+  const ranked = useMemo(() => [...filtered].sort((a, b) =>
+    (scoreFor(b, category) || 0) - (scoreFor(a, category) || 0) ||
+    b.dateFrom.localeCompare(a.dateFrom) ||
+    a.name.localeCompare(b.name)
+  ), [filtered, category]);
+  const chronological = useMemo(() => [...cities].sort((a, b) => b.dateFrom.localeCompare(a.dateFrom)), [cities]);
+  const draftOverall = calculateOverall(ratings);
+  const requiredRatingsComplete = requiredRatingKeys.every(key => ratings[key] !== null && (ratings[key] || 0) > 0);
 
   useEffect(() => {
     const needle = normalizeSearch(query.trim());
@@ -214,15 +291,26 @@ export default function CityLogger() {
   }, [query]);
 
   function beginAdd(city: CityOption) {
-    setCandidate(city); setQuery(city.name); setRating(0); setNote("");
+    setCandidate(city);
+    setQuery(city.name);
+    setRatings({ personal: 4, culture: 4, architecture: 4, food: 4, nature: null, nightlife: null });
+    setDateFrom("2026-07-01");
+    setDateTo("2026-07-05");
+    setVisitType("");
+    setNote("");
   }
 
   function saveCity() {
-    if (!candidate || !rating) return;
+    if (!candidate || !requiredRatingsComplete || !dateFrom || !dateTo || dateTo < dateFrom) return;
     const newCity: City = {
-      ...candidate, id: Date.now(), rating,
-      category: category === "Overall" ? "Culture" : category,
-      date: "Jul 2026", note: note || "A new city in my travel story."
+      ...candidate,
+      id: Date.now(),
+      rating: draftOverall,
+      ratings,
+      dateFrom,
+      dateTo,
+      visitType,
+      note: note || "A new city in my travel story."
     };
     setCities(prev => [newCity, ...prev]);
     setSelected(newCity); setAdding(false); setCandidate(null); setQuery(""); setTab("map");
@@ -235,6 +323,7 @@ export default function CityLogger() {
         <nav className="desktop-nav" aria-label="Primary">
           <button className={tab === "map" ? "active" : ""} onClick={() => setTab("map")}><MapIcon/>Map</button>
           <button className={tab === "rankings" ? "active" : ""} onClick={() => setTab("rankings")}><Trophy/>Rankings</button>
+          <button className={tab === "log" ? "active" : ""} onClick={() => setTab("log")}><BookOpen/>Log</button>
           <button className={tab === "profile" ? "active" : ""} onClick={() => setTab("profile")}><UserRound/>Profile</button>
         </nav>
         <div className="sidebar-card">
@@ -250,8 +339,8 @@ export default function CityLogger() {
       <section className="main-pane">
         <header className="topbar">
           <div>
-            <p className="kicker">{tab === "map" ? "YOUR TRAVEL MAP" : tab === "rankings" ? "YOUR FAVOURITES" : "YOUR JOURNEY"}</p>
-            <h1>{tab === "map" ? "The world, according to you." : tab === "rankings" ? "Cities worth returning to." : "A life well travelled."}</h1>
+            <p className="kicker">{tab === "map" ? "YOUR TRAVEL MAP" : tab === "rankings" ? "YOUR FAVOURITES" : tab === "log" ? "YOUR TRAVEL LOG" : "YOUR JOURNEY"}</p>
+            <h1>{tab === "map" ? "The world, according to you." : tab === "rankings" ? "Cities worth returning to." : tab === "log" ? "Every trip, in order." : "A life well travelled."}</h1>
           </div>
           <button className="primary-btn" onClick={() => setAdding(true)}><Plus/>Log a city</button>
         </header>
@@ -272,16 +361,16 @@ export default function CityLogger() {
             </div>
 
             <div className="map-card">
-              <InteractiveMap cities={filtered} selected={selected} onSelect={setSelected}/>
-              <div className="map-legend"><span>Not for me</span>{colors.slice(1).map(c => <i key={c} style={{ background: c }}/>) }<span>Loved it</span></div>
+              <InteractiveMap cities={filtered} selected={selected} onSelect={setSelected} scoreCategory={category}/>
+              <div className="map-legend"><span>≤2</span>{["#CD554F","#E28A43","#D4B849","#62A461","#236844"].map(c => <i key={c} style={{ background: c }}/>) }<span>4.5+</span></div>
               {selected && filtered.some(c => c.id === selected.id) && (
                 <article className="city-preview">
                   <button className="close-btn" onClick={() => setSelected(null)} aria-label="Close"><X/></button>
                   <div className="photo-block"><span>{selected.emoji}</span><small>{selected.country.toUpperCase()}</small></div>
                   <div className="preview-copy">
-                    <p className="city-meta"><MapPin/>{selected.country} · {selected.date}</p>
+                    <p className="city-meta"><MapPin/>{selected.country} · {formatVisitDate(selected.dateFrom, selected.dateTo)}</p>
                     <h2>{selected.name}</h2>
-                    <div className="stars">{[1,2,3,4,5].map(n => <Star key={n} fill={n <= selected.rating ? colors[selected.rating] : "none"} color={n <= selected.rating ? colors[selected.rating] : "#c7c9c3"}/>)}</div>
+                    <div className="stars">{[1,2,3,4,5].map(n => <Star key={n} fill={n <= Math.round(selected.rating) ? colorForScore(selected.rating) : "none"} color={n <= Math.round(selected.rating) ? colorForScore(selected.rating) : "#c7c9c3"}/>)}<strong>{selected.rating.toFixed(1)}</strong></div>
                     <p>“{selected.note}”</p>
                     <button className="text-btn">View city story <span>→</span></button>
                   </div>
@@ -302,9 +391,26 @@ export default function CityLogger() {
                 <button className="rank-row" key={city.id} onClick={() => { setSelected(city); setTab("map"); }}>
                   <span className={`rank-number ${index < 3 ? "top" : ""}`}>{index + 1}</span>
                   <span className="rank-flag">{city.emoji}</span>
-                  <span className="rank-main"><strong>{city.name}</strong><small>{city.country} · {city.category}</small></span>
-                  <span className="rank-rating"><strong>{city.rating}.0</strong><Star fill={colors[city.rating]} color={colors[city.rating]}/></span>
-                  <span className="rank-bar"><i style={{ width: `${city.rating * 20}%`, background: colors[city.rating] }}/></span>
+                  <span className="rank-main"><strong>{city.name}</strong><small>{city.country} · {formatVisitDate(city.dateFrom, city.dateTo)}</small></span>
+                  <span className="rank-rating"><strong>{(scoreFor(city, category) || 0).toFixed(1)}</strong><Star fill={colorForScore(scoreFor(city, category) || 0)} color={colorForScore(scoreFor(city, category) || 0)}/></span>
+                  <span className="rank-bar"><i style={{ width: `${(scoreFor(city, category) || 0) * 20}%`, background: colorForScore(scoreFor(city, category) || 0) }}/></span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {tab === "log" && (
+          <div className="log-layout">
+            <div className="log-summary"><BookOpen/><span><strong>{cities.length} entries</strong><small>Newest visits first</small></span></div>
+            <div className="log-list">
+              {chronological.map((city, index) => (
+                <button key={city.id} className="log-entry" onClick={() => { setSelected(city); setTab("map"); }}>
+                  <span className="log-date">{new Intl.DateTimeFormat("en-GB", { month: "short", year: "numeric" }).format(new Date(`${city.dateFrom}T12:00:00`))}</span>
+                  <span className="log-line"><i className={index === 0 ? "latest" : ""}/></span>
+                  <span className="rank-flag">{city.emoji}</span>
+                  <span className="rank-main"><strong>{city.name}</strong><small>{city.country} · {formatVisitDate(city.dateFrom, city.dateTo)}{city.visitType ? ` · ${city.visitType}` : ""}</small></span>
+                  <span className="rank-rating"><strong>{city.rating.toFixed(1)}</strong><Star fill={colorForScore(city.rating)} color={colorForScore(city.rating)}/></span>
                 </button>
               ))}
             </div>
@@ -332,6 +438,7 @@ export default function CityLogger() {
         <button className={tab === "map" ? "active" : ""} onClick={() => setTab("map")}><MapIcon/><span>Map</span></button>
         <button className={tab === "rankings" ? "active" : ""} onClick={() => setTab("rankings")}><Trophy/><span>Rankings</span></button>
         <button className="add-mobile" onClick={() => setAdding(true)}><Plus/></button>
+        <button className={tab === "log" ? "active" : ""} onClick={() => setTab("log")}><BookOpen/><span>Log</span></button>
         <button className={tab === "profile" ? "active" : ""} onClick={() => setTab("profile")}><UserRound/><span>Profile</span></button>
       </nav>
 
@@ -358,18 +465,28 @@ export default function CityLogger() {
             ) : (
               <div className="rating-form">
                 <div className="candidate-chip"><span>{candidate.emoji}</span><div><strong>{candidate.name}</strong><small>{candidate.country}</small></div><Check/></div>
-                <fieldset>
-                  <legend>Your overall rating</legend>
-                  <div className="big-stars">{[1,2,3,4,5].map(n => <button key={n} onClick={() => setRating(n)} aria-label={`${n} stars`}><Star fill={n <= rating ? colors[rating || n] : "none"} color={n <= rating ? colors[rating || n] : "#c7c9c3"}/></button>)}</div>
-                  <p>{rating === 1 ? "Not for me" : rating === 2 ? "It had its moments" : rating === 3 ? "Glad I went" : rating === 4 ? "Would happily return" : rating === 5 ? "One of my favourites" : "Tap to rate"}</p>
-                </fieldset>
-                <div className="form-row">
-                  <label><span><CalendarDays/>Visit date</span><input type="month" defaultValue="2026-07"/></label>
-                  <label><span><Filter/>Best for</span><select value={category === "Overall" ? "Culture" : category} onChange={e => setCategory(e.target.value)}><option>Food</option><option>Culture</option><option>Nature</option><option>Nightlife</option></select></label>
+                <div className="overall-score" style={{ "--score-color": colorForScore(draftOverall) } as React.CSSProperties}>
+                  <span><small>CALCULATED OVERALL</small><strong>{draftOverall.toFixed(1)}</strong></span>
+                  <div><Star fill={colorForScore(draftOverall)} color={colorForScore(draftOverall)}/><p>Based on {Object.values(ratings).filter(value => value !== null).length} category ratings</p></div>
                 </div>
+                <div className="category-ratings">
+                  <p className="section-label">CORE RATINGS · HALF-STARS ENABLED</p>
+                  {requiredRatingKeys.map(key => (
+                    <CategoryRating key={key} label={key === "personal" ? "Personal experience" : key[0].toUpperCase() + key.slice(1)} value={ratings[key]} onChange={value => setRatings(current => ({ ...current, [key]: value }))}/>
+                  ))}
+                  <p className="section-label optional-label">OPTIONAL RATINGS</p>
+                  {optionalRatingKeys.map(key => (
+                    <CategoryRating key={key} optional label={key[0].toUpperCase() + key.slice(1)} value={ratings[key]} onChange={value => setRatings(current => ({ ...current, [key]: value }))}/>
+                  ))}
+                </div>
+                <div className="form-row date-range">
+                  <label><span><CalendarDays/>Arrived</span><input type="date" value={dateFrom} onChange={event => { setDateFrom(event.target.value); if (dateTo < event.target.value) setDateTo(event.target.value); }}/></label>
+                  <label><span><CalendarDays/>Left</span><input type="date" min={dateFrom} value={dateTo} onChange={event => setDateTo(event.target.value)}/></label>
+                </div>
+                <label className="select-field"><span><Filter/>Visit type <small>OPTIONAL</small></span><select value={visitType} onChange={event => setVisitType(event.target.value)}><option value="">Choose a visit type</option><option>Holiday</option><option>City break</option><option>Road trip</option><option>Work</option><option>Study</option><option>Lived there</option><option>Visiting friends or family</option><option>Day trip</option></select></label>
                 <label className="note-field"><span>Your memory <small>OPTIONAL</small></span><textarea value={note} onChange={e => setNote(e.target.value)} maxLength={160} placeholder="What made this city memorable?"/><small>{note.length}/160</small></label>
                 <button className="photo-btn"><Camera/>Add a favourite photo <small>Optional</small></button>
-                <button className="save-btn" disabled={!rating} onClick={saveCity}><MapPin/>Add to my map</button>
+                <button className="save-btn" disabled={!requiredRatingsComplete || !dateFrom || !dateTo || dateTo < dateFrom} onClick={saveCity}><MapPin/>Add to my map · {draftOverall.toFixed(1)}</button>
               </div>
             )}
           </section>
