@@ -237,7 +237,7 @@ function InteractiveMap({
 }
 
 export default function CityLogger({ nativeMode = false }: { nativeMode?: boolean }) {
-  const [tab, setTab] = useState<"map" | "rankings" | "log" | "compare" | "lists" | "profile">("map");
+  const [tab, setTab] = useState<"map" | "rankings" | "log" | "compare" | "lists" | "profile" | "city">("map");
   const [cities, setCities] = useState(starterCities);
   const [selected, setSelected] = useState<City | null>(nativeMode ? null : starterCities[0]);
   const [adding, setAdding] = useState(false);
@@ -415,6 +415,15 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
     setVisitType("");
     setNote("");
     setPhotoFile(null);
+  }
+
+  function openAddCity() {
+    setCandidate(null);
+    setQuery("");
+    setSearchResults(suggestions);
+    setSearching(false);
+    setPhotoFile(null);
+    setAdding(true);
   }
 
   function saveYearlyGoal() {
@@ -618,7 +627,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
           </div>
           <div className="top-actions">
             {!user && <button className="account-btn" onClick={() => { setAuthView("welcome"); setAuthOpen(true); }}>Sign in</button>}
-            <button className="primary-btn" onClick={() => setAdding(true)}><Plus/>Log a city</button>
+            <button className="primary-btn" onClick={openAddCity}><Plus/>Log a city</button>
           </div>
         </header>
 
@@ -661,7 +670,15 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
           <div className="rankings-layout">
             <div className="rankings-head">
               <div className="segmented">{categories.map(item => <button key={item} className={category === item ? "active" : ""} onClick={() => setCategory(item)}>{item}</button>)}</div>
-              <button className="filter-btn" onClick={() => setManualOrder(manualOrder ? null : displayedRanked.map(city => city.id))}><ListFilter/>{manualOrder ? "Custom order · Reset" : "Drag to reorder"}<ChevronDown/></button>
+              <button className="filter-btn" onClick={() => nativeMode ? setFilterOpen(!filterOpen) : setManualOrder(manualOrder ? null : displayedRanked.map(city => city.id))}>
+                {nativeMode ? <><SlidersHorizontal/>Filters{continent !== "All" && <span className="filter-dot"/>}</> : <><ListFilter/>{manualOrder ? "Custom order · Reset" : "Drag to reorder"}<ChevronDown/></>}
+              </button>
+              {nativeMode && filterOpen && <div className="filter-popover">
+                <label>Continent</label>
+                <select value={continent} onChange={event => setContinent(event.target.value)}>
+                  {["All", "Europe", "Asia", "Africa", "North America", "South America", "Oceania"].map(item => <option key={item}>{item}</option>)}
+                </select>
+              </div>}
             </div>
             <div className="ranking-list">
               {displayedRanked.map((city, index) => (
@@ -683,7 +700,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
             <div className="log-summary"><BookOpen/><span><strong>{cities.length} entries</strong><small>Newest visits first</small></span></div>
             <div className="log-list">
               {chronological.map((city, index) => (
-                <button key={city.id} className="log-entry" onClick={() => { setSelected(city); setTab("map"); }}>
+                <button key={city.id} className="log-entry" onClick={() => { setSelected(city); setTab(nativeMode ? "city" : "map"); }}>
                   <span className="log-date">{new Intl.DateTimeFormat("en-GB", { month: "short", year: "numeric" }).format(new Date(`${city.dateFrom}T12:00:00`))}</span>
                   <span className="log-line"><i className={index === 0 ? "latest" : ""}/></span>
                   <span className="rank-flag">{city.emoji}</span>
@@ -692,6 +709,26 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
                 </button>
               ))}
             </div>
+          </div>
+        )}
+
+        {tab === "city" && selected && (
+          <div className="native-only city-detail-layout">
+            <button className="city-detail-back" onClick={() => setTab("log")}><ArrowLeft/>Travel log</button>
+            <article className="city-detail-card">
+              <header>
+                <span className="city-detail-flag">{selected.emoji}</span>
+                <div><p className="kicker">{selected.country.toUpperCase()}</p><h2>{selected.name}</h2><small>{formatVisitDate(selected.dateFrom, selected.dateTo)}{selected.visitType ? ` · ${selected.visitType}` : ""}</small></div>
+                <strong style={{ color: colorForScore(selected.rating) }}>{selected.rating.toFixed(1)}</strong>
+              </header>
+              <div className="city-detail-ratings">
+                {[...requiredRatingKeys, ...optionalRatingKeys].map(key => selected.ratings[key] !== null && (
+                  <div key={key}><span>{key === "personal" ? "Personal experience" : key}</span><b>{selected.ratings[key]?.toFixed(1)}</b><i><span style={{ width: `${(selected.ratings[key] || 0) * 20}%`, background: colorForScore(selected.ratings[key] || 0) }}/></i></div>
+                ))}
+              </div>
+              <section><p className="kicker">YOUR MEMORY</p><p>“{selected.note}”</p></section>
+              <button className="city-detail-map" onClick={() => setTab("map")}><MapPin/>Show on map</button>
+            </article>
           </div>
         )}
 
@@ -728,7 +765,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
             <section className="lists-section standalone-section">
               <div className="section-heading"><span><ListPlus/></span><div><p className="kicker">MY LISTS</p><h2>Your collections</h2></div></div>
               <article className="personal-list want-list">
-                <div><span className="list-icon"><Heart fill="currentColor"/></span><span><h3>Want to Visit</h3><small>{wishlist.length} saved cities · purple on your map</small></span></div>
+                <div><span className="list-icon"><Heart fill="currentColor"/></span><span><h3>Want to Visit</h3><small>{wishlist.length} saved cities · purple on your map</small></span><button className="native-only want-add-city" onClick={openAddCity}><Plus/>Add city</button></div>
                 <div className="list-cities">{wishlist.map((city, index) => <span key={`${city.name}-${city.country}`}><b>{index + 1}</b>{city.emoji} {city.name}<button aria-label={`Remove ${city.name}`} onClick={() => addWantToVisit(city)}><X/></button></span>)}</div>
               </article>
               {lists.map(list => (
@@ -832,8 +869,8 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
       <nav className="mobile-nav" aria-label="Primary">
         <button className={tab === "map" ? "active" : ""} onClick={() => setTab("map")}><MapIcon/><span>Map</span></button>
         <button className={tab === "rankings" ? "active" : ""} onClick={() => setTab("rankings")}><Trophy/><span>Rankings</span></button>
-        <button className="add-mobile" onClick={() => setAdding(true)}><Plus/></button>
-        <button className={tab === "log" ? "active" : ""} onClick={() => setTab("log")}><BookOpen/><span>Log</span></button>
+        <button className="add-mobile" onClick={openAddCity}><Plus/></button>
+        <button className={tab === "log" || tab === "city" ? "active" : ""} onClick={() => setTab("log")}><BookOpen/><span>Log</span></button>
         <button className={`compare-tab ${tab === "compare" ? "active" : ""}`} onClick={() => setTab("compare")}><GitCompareArrows/><span>Compare</span></button>
         <button className={tab === "lists" ? "active" : ""} onClick={() => setTab("lists")}><ListPlus/><span>Lists</span></button>
         <button className={tab === "profile" ? "active" : ""} onClick={() => setTab("profile")}><UserRound/><span>Profile</span></button>
