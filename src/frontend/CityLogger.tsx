@@ -118,7 +118,7 @@ function InteractiveMap({
   cities: City[];
   wishlist: CityOption[];
   selected: City | null;
-  onSelect: (city: City) => void;
+  onSelect: (city: City | null) => void;
   scoreCategory: string;
 }) {
   const mapElement = useRef<HTMLDivElement>(null);
@@ -159,6 +159,7 @@ function InteractiveMap({
         }
       };
       map.on("zoomend", updateZoomDetail);
+      map.on("click", () => onSelect(null));
       updateZoomDetail();
     }
 
@@ -264,8 +265,8 @@ export default function CityLogger() {
     { id: 1, title: "Most underrated", cityIds: [starterCities[0].id, starterCities[4].id, starterCities[2].id] }
   ]);
   const [newListTitle, setNewListTitle] = useState("");
-  const [yearlyGoal, setYearlyGoal] = useState(16);
-  const [goalDraft, setGoalDraft] = useState("16");
+  const [yearlyGoal, setYearlyGoal] = useState(10);
+  const [goalDraft, setGoalDraft] = useState("10");
   const [editingGoal, setEditingGoal] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
@@ -304,7 +305,7 @@ export default function CityLogger() {
   const goalProgress = Math.min(100, Math.round((citiesThisYear / yearlyGoal) * 100));
 
   useEffect(() => {
-    const savedGoal = Number(window.localStorage.getItem("citylogger-yearly-goal"));
+    const savedGoal = Number(window.localStorage.getItem("citylogger-yearly-goal-v2"));
     if (Number.isInteger(savedGoal) && savedGoal >= 1 && savedGoal <= 999) {
       setYearlyGoal(savedGoal);
       setGoalDraft(String(savedGoal));
@@ -422,7 +423,7 @@ export default function CityLogger() {
     setYearlyGoal(nextGoal);
     setGoalDraft(String(nextGoal));
     setEditingGoal(false);
-    window.localStorage.setItem("citylogger-yearly-goal", String(nextGoal));
+    window.localStorage.setItem("citylogger-yearly-goal-v2", String(nextGoal));
   }
 
   async function saveCity() {
@@ -638,7 +639,7 @@ export default function CityLogger() {
 
             <div className="map-card">
               <InteractiveMap cities={filtered} wishlist={wishlist} selected={selected} onSelect={setSelected} scoreCategory={category}/>
-              <div className="map-legend"><span>≤2</span>{["#CD554F","#E28A43","#D4B849","#62A461","#236844"].map(c => <i key={c} style={{ background: c }}/>) }<span>4.5+</span><i className="purple-key"/><span>Want to visit</span></div>
+              <div className="map-legend"><span>0</span>{["#CD554F","#E28A43","#D4B849","#62A461","#236844"].map(c => <i key={c} style={{ background: c }}/>) }<span>4.5+</span><i className="purple-key"/><span>Want to visit</span></div>
               {selected && filtered.some(c => c.id === selected.id) && (
                 <article className="city-preview">
                   <button className="close-btn" onClick={() => setSelected(null)} aria-label="Close"><X/></button>
