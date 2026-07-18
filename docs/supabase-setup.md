@@ -6,5 +6,8 @@
 4. Verify that `profiles`, `visits`, and `visit_photographs` have Row Level Security enabled and that the `visit-photos` bucket is private.
 5. In Authentication → URL Configuration, set the Site URL and allow both the local URL and production/native recovery URLs.
 6. Keep email confirmation enabled. Configure a production SMTP sender before public release.
-7. Deploy the deletion function with `supabase functions deploy delete-account`. Supabase supplies its project URL and keys to deployed functions; never add the service-role key to client environment variables.
+7. Deploy both deletion functions:
+   - `supabase functions deploy delete-visit`
+   - `supabase functions deploy delete-account`
+   Supabase supplies its project URL and keys to deployed functions; never add the service-role key to client environment variables.
 8. Run the cross-user RLS checks in `supabase/tests/rls-verification.sql` with two real test accounts before release.

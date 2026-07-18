@@ -274,6 +274,7 @@ export default function CityLogger() {
   const [authMessage, setAuthMessage] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
   const [syncStatus, setSyncStatus] = useState<"idle" | "loading" | "saved" | "error">("idle");
+  const syncRequest = useRef(0);
 
   const filtered = useMemo(() =>
     cities.filter(city =>
@@ -323,15 +324,16 @@ export default function CityLogger() {
     if (!user) return;
     let active = true;
     const refresh = async () => {
+      const requestId = ++syncRequest.current;
       setSyncStatus("loading");
       try {
         const stored = await loadVisits();
-        if (!active) return;
+        if (!active || requestId !== syncRequest.current) return;
         setCities(stored);
         setSelected(stored[0] || null);
         setSyncStatus("idle");
       } catch {
-        if (active) setSyncStatus("error");
+        if (active && requestId === syncRequest.current) setSyncStatus("error");
       }
     };
     refresh();
@@ -412,12 +414,20 @@ export default function CityLogger() {
     };
     setSyncStatus("loading");
     try {
-      const newCity = await createVisit(draftCity as Omit<StoredCity, "id">, user.id);
-      if (photoFile) await uploadVisitPhoto(user.id, newCity.id, photoFile);
+      const operationId = crypto.randomUUID();
+      const newCity = await createVisit(draftCity as Omit<StoredCity, "id">, operationId);
       setCities(prev => [newCity, ...prev]);
       setSelected(newCity); setAdding(false); setCandidate(null); setQuery(""); setTab("map");
       setSyncStatus("saved");
       window.setTimeout(() => setSyncStatus("idle"), 1800);
+      if (photoFile) {
+        try {
+          await uploadVisitPhoto(newCity.id, photoFile);
+        } catch {
+          setSyncStatus("error");
+          setAuthMessage("The visit was saved, but its photograph could not be uploaded. You can add it again later.");
+        }
+      }
     } catch (error) {
       setSyncStatus("error");
       setAuthMessage(error instanceof Error ? error.message : "The visit could not be saved.");
@@ -464,7 +474,7 @@ export default function CityLogger() {
     if (!user) return;
     setSyncStatus("loading");
     try {
-      const payload = await downloadAccountData(user.id, user.email, user.created_at);
+      const payload = await downloadAccountData();
       const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
       const anchor = document.createElement("a");
       anchor.href = url;
