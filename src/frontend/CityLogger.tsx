@@ -3,7 +3,7 @@
 import {
   ArrowLeft, BookOpen, CalendarDays, Camera, Check, ChevronDown, Compass, Filter,
   GitCompareArrows, GripVertical, Heart, ListFilter, ListPlus, Map as MapIcon, MapPin,
-  Plus, Search, SlidersHorizontal, Sparkles, Star, Trophy, UserRound, X
+  Pencil, Plus, Search, SlidersHorizontal, Sparkles, Star, Trophy, UserRound, X
 } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -264,6 +264,9 @@ export default function CityLogger() {
     { id: 1, title: "Most underrated", cityIds: [starterCities[0].id, starterCities[4].id, starterCities[2].id] }
   ]);
   const [newListTitle, setNewListTitle] = useState("");
+  const [yearlyGoal, setYearlyGoal] = useState(16);
+  const [goalDraft, setGoalDraft] = useState("16");
+  const [editingGoal, setEditingGoal] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
@@ -296,6 +299,17 @@ export default function CityLogger() {
   const compared = compareIds.map(id => cities.find(city => String(city.id) === String(id)) || cities[0]).filter(Boolean);
   const draftOverall = calculateOverall(ratings);
   const requiredRatingsComplete = requiredRatingKeys.every(key => ratings[key] !== null && (ratings[key] || 0) > 0);
+  const currentYear = new Date().getFullYear();
+  const citiesThisYear = cities.filter(city => city.dateFrom.startsWith(`${currentYear}-`)).length;
+  const goalProgress = Math.min(100, Math.round((citiesThisYear / yearlyGoal) * 100));
+
+  useEffect(() => {
+    const savedGoal = Number(window.localStorage.getItem("citylogger-yearly-goal"));
+    if (Number.isInteger(savedGoal) && savedGoal >= 1 && savedGoal <= 999) {
+      setYearlyGoal(savedGoal);
+      setGoalDraft(String(savedGoal));
+    }
+  }, []);
 
   useEffect(() => {
     if (!supabase) {
@@ -357,12 +371,19 @@ export default function CityLogger() {
     fetch(`/cities/${prefix}.json`, { signal: controller.signal })
       .then(response => response.ok ? response.json() : [])
       .then((records: [string, string, string, string, number, number, number, string][]) => {
-        const matches = records
+        const matchingRecords = records
           .filter(record =>
             normalizeSearch(record[0]).includes(needle) ||
             normalizeSearch(record[1]).includes(needle) ||
             normalizeSearch(record[2]).includes(needle)
-          )
+          );
+        const uniqueRecords = [...new Map(
+          matchingRecords.map(record => [
+            `${normalizeSearch(record[0])}|${normalizeSearch(record[2])}`,
+            record
+          ])
+        ).values()];
+        const matches = uniqueRecords
           .slice(0, 12)
           .map(record => ({
             name: record[0],
@@ -393,6 +414,15 @@ export default function CityLogger() {
     setVisitType("");
     setNote("");
     setPhotoFile(null);
+  }
+
+  function saveYearlyGoal() {
+    const nextGoal = Math.min(999, Math.max(1, Math.round(Number(goalDraft))));
+    if (!Number.isFinite(nextGoal)) return;
+    setYearlyGoal(nextGoal);
+    setGoalDraft(String(nextGoal));
+    setEditingGoal(false);
+    window.localStorage.setItem("citylogger-yearly-goal", String(nextGoal));
   }
 
   async function saveCity() {
@@ -570,8 +600,8 @@ export default function CityLogger() {
           <span className="eyebrow">YOUR JOURNEY</span>
           <strong>{cities.length} cities</strong>
           <p>across {new Set(cities.map(c => c.country)).size} countries</p>
-          <div className="progress"><span style={{ width: "38%" }}/></div>
-          <small>38% of your 2026 goal</small>
+          <div className="progress"><span style={{ width: `${goalProgress}%` }}/></div>
+          <small>{goalProgress}% of your {currentYear} goal</small>
         </div>
         <button className="avatar-row account-entry" onClick={() => user ? setTab("profile") : setAuthOpen(true)}>
           <span className="avatar">{user ? (user.user_metadata?.display_name || user.email || "U").slice(0, 2).toUpperCase() : "?"}</span>
@@ -732,7 +762,27 @@ export default function CityLogger() {
               <article><Star/><strong>{(cities.reduce((a,c) => a + c.rating, 0) / cities.length).toFixed(1)}</strong><span>Average rating</span></article>
             </div>
             <article className="insight-card"><span className="insight-icon"><Sparkles/></span><div><p className="kicker">YOUR TRAVEL TASTE</p><h3>You’re happiest in culture-rich coastal cities.</h3><p>Lisbon, Kyoto and Cape Town define your top travel pattern. Food and nature consistently lift your ratings.</p></div></article>
-            <div className="year-card"><div><p className="kicker">2026 TRAVEL GOAL</p><h3>6 of 16 new cities</h3></div><span>38%</span><div className="wide-progress"><i style={{width:"38%"}}/></div></div>
+            <div className="year-card">
+              <div>
+                <p className="kicker">{currentYear} TRAVEL GOAL</p>
+                <h3>{citiesThisYear} of {yearlyGoal} new cities</h3>
+              </div>
+              <div className="goal-actions">
+                <span>{goalProgress}%</span>
+                <button className="edit-goal-btn" onClick={() => setEditingGoal(true)}><Pencil/>Edit goal</button>
+              </div>
+              <div className="wide-progress"><i style={{width:`${goalProgress}%`}}/></div>
+              {editingGoal && (
+                <form className="goal-editor" onSubmit={event => { event.preventDefault(); saveYearlyGoal(); }}>
+                  <label htmlFor="yearly-city-goal">How many new cities do you want to visit in {currentYear}?</label>
+                  <div>
+                    <input id="yearly-city-goal" type="number" min="1" max="999" value={goalDraft} onChange={event => setGoalDraft(event.target.value)}/>
+                    <button type="submit">Save goal</button>
+                    <button type="button" onClick={() => { setGoalDraft(String(yearlyGoal)); setEditingGoal(false); }}>Cancel</button>
+                  </div>
+                </form>
+              )}
+            </div>
             <section className="account-settings">
               <p className="kicker">ACCOUNT & PRIVACY</p>
               {user ? <>

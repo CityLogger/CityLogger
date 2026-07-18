@@ -184,6 +184,16 @@ h1 { font-size: clamp(27px, 3vw, 42px); line-height: 1.05; }
 .insight-card p:last-child { color: #5e6a61; margin-bottom: 0; font-size: 13px; line-height: 1.6; }
 .year-card { margin-top: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 22px; display: grid; grid-template-columns: 1fr auto; }
 .year-card > span { font: 700 22px "Manrope"; color: var(--green); }
+.goal-actions { display: flex; align-items: flex-end; gap: 14px; flex-direction: column; }
+.goal-actions > span { font: 700 22px "Manrope"; color: var(--green); }
+.edit-goal-btn { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; color: var(--green); font-weight: 700; cursor: pointer; }
+.edit-goal-btn svg { width: 14px; height: 14px; }
+.goal-editor { grid-column: 1 / -1; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
+.goal-editor label { display: block; margin-bottom: 10px; color: var(--muted); font-size: 13px; }
+.goal-editor > div { display: flex; gap: 8px; }
+.goal-editor input { width: 100px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--bg); font: inherit; }
+.goal-editor button { border: 1px solid var(--line); border-radius: 10px; padding: 9px 13px; background: var(--card); cursor: pointer; font-weight: 700; }
+.goal-editor button[type="submit"] { background: var(--green); color: white; border-color: var(--green); }
 .wide-progress { grid-column: 1 / -1; }
 .account-settings { margin-top: 14px; padding: 23px; border: 1px solid var(--line); border-radius: 18px; background: var(--card); }
 .account-settings > p:not(.kicker) { color: var(--muted); font-size: 13px; line-height: 1.55; }

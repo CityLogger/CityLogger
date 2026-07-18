@@ -22,6 +22,7 @@ const continentNames = {
 
 const normalize = value => value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 const chunks = new Map();
+const uniqueCities = new Map();
 let count = 0;
 
 for (const line of text.split(/\r?\n/)) {
@@ -31,7 +32,6 @@ for (const line of text.split(/\r?\n/)) {
   const ascii = cols[2];
   const countryCode = cols[8];
   const country = countries.get(countryCode);
-  const key = normalize(ascii || name).replace(/[^a-z0-9]/g, "").slice(0, 2) || "__";
   const record = [
     name,
     ascii,
@@ -42,6 +42,13 @@ for (const line of text.split(/\r?\n/)) {
     Number(cols[14]) || 0,
     countryCode
   ];
+  const uniqueKey = `${normalize(name)}|${countryCode}`;
+  const existing = uniqueCities.get(uniqueKey);
+  if (!existing || record[6] > existing[6]) uniqueCities.set(uniqueKey, record);
+}
+
+for (const record of uniqueCities.values()) {
+  const key = normalize(record[1] || record[0]).replace(/[^a-z0-9]/g, "").slice(0, 2) || "__";
   if (!chunks.has(key)) chunks.set(key, []);
   chunks.get(key).push(record);
   count++;
