@@ -622,6 +622,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
       <section className="main-pane">
         <header className="topbar">
           <div>
+            {nativeMode && tab === "map" && <div className="native-only native-map-brand"><span className="brand-mark"><MapPin size={18}/></span><span>citylogger</span></div>}
             <p className="kicker">{tab === "map" ? "YOUR TRAVEL MAP" : tab === "rankings" ? "YOUR FAVOURITES" : tab === "log" ? "YOUR TRAVEL LOG" : tab === "compare" ? "CITY HEAD TO HEAD" : tab === "lists" ? "YOUR COLLECTIONS" : "YOUR JOURNEY"}</p>
             <h1>{tab === "map" ? "The world, according to you." : tab === "rankings" ? "Cities worth returning to." : tab === "log" ? "Every trip, in order." : tab === "compare" ? "How do your cities compare?" : tab === "lists" ? "Save places your way." : "A life well travelled."}</h1>
           </div>

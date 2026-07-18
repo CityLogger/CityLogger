@@ -59,6 +59,26 @@
   font-size: 9px;
 }
 
+.native-app .native-map-brand {
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 700 17px "Manrope";
+  letter-spacing: -.4px;
+}
+
+.native-app .native-map-brand .brand-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+}
+
+.native-app .native-map-brand .brand-mark svg {
+  width: 16px;
+  height: 16px;
+}
+
 .native-app .top-actions {
   display: none;
 }
@@ -128,10 +148,14 @@
 
 .native-app .map-legend {
   left: 10px;
-  top: 10px;
-  bottom: auto;
+  top: auto;
+  bottom: 10px;
   max-width: calc(100% - 80px);
   padding: 7px 9px;
+}
+
+.native-app .map-card:has(.city-preview) .map-legend {
+  bottom: 112px;
 }
 
 .native-app .city-preview {
