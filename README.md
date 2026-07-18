@@ -14,6 +14,8 @@ supabase/
   functions/          Authenticated server-side deletion operations
   tests/              Database security verification
 public/cities/        Static, sharded worldwide city search index
+mobile/               Static React entry point used by Capacitor
+ios/                  Generated native Xcode project
 scripts/              Dataset and deployment preparation scripts
 tests/                Fast TypeScript unit tests
 docs/                 Setup, architecture and App Store notes
@@ -46,3 +48,9 @@ in filename order and deploy both Edge Functions. Full instructions are in
 [`docs/supabase-setup.md`](docs/supabase-setup.md).
 
 Never commit `.env.local` or a Supabase service-role key.
+
+## iOS
+
+The Capacitor project is included in this repository. See
+[`docs/ios-capacitor.md`](docs/ios-capacitor.md) for the mobile build, Xcode and
+TestFlight handoff.
