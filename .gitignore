@@ -6,4 +6,4 @@ outputs/
 *.log
 .env*
 !.env.example
-work/geonames/
+work/

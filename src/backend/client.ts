@@ -1,5 +1,5 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js";
-import { supabase } from "../supabase";
+import { supabase } from "./supabase";
 import { BackendError } from "./errors";
 
 export function getBackendClient(): SupabaseClient {

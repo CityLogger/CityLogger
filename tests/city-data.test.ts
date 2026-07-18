@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { calculateStoredOverall, validatePhoto, validateVisit } from "../lib/city-data";
-import { fromVisitRow, toVisitRow } from "../lib/backend/model";
+import { calculateStoredOverall, validatePhoto, validateVisit } from "../src/backend";
+import { fromVisitRow, toVisitRow } from "../src/backend/model";
 
 describe("visit storage validation", () => {
   it("calculates the overall score from required and optional categories", () => {

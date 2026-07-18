@@ -11,13 +11,13 @@
 
 ## Client modules
 
-- `lib/backend/client.ts`: configured client access and verified current-user lookup.
-- `lib/backend/model.ts`: domain/database types, explicit field mapping, and validation.
-- `lib/backend/visits.ts`: visit queries and retry-safe mutations.
-- `lib/backend/photos.ts`: private upload and signed URL creation.
-- `lib/backend/account.ts`: current-user-only export.
-- `lib/backend/errors.ts`: stable error codes and user-safe messages.
-- `lib/city-data.ts`: narrow compatibility facade used by the UI.
+- `src/backend/client.ts`: configured client access and verified current-user lookup.
+- `src/backend/model.ts`: domain/database types, explicit field mapping, and validation.
+- `src/backend/visits.ts`: visit queries and retry-safe mutations.
+- `src/backend/photos.ts`: private upload and signed URL creation.
+- `src/backend/account.ts`: current-user-only export.
+- `src/backend/errors.ts`: stable error codes and user-safe messages.
+- `src/backend/index.ts`: narrow public API used by the frontend.
 
 ## Reliability behavior
 
