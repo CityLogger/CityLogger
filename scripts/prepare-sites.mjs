@@ -1,5 +1,6 @@
 import { copyFile, mkdir } from "node:fs/promises";
 
 await copyFile("dist/server/index.mjs", "dist/server/index.js");
+await copyFile("dist/server/ssr/index.mjs", "dist/server/ssr/index.js");
 await mkdir("dist/.openai", { recursive: true });
 await copyFile(".openai/hosting.json", "dist/.openai/hosting.json");
