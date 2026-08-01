@@ -1,5 +1,6 @@
 import { getBackendClient, requireCurrentUser } from "./client";
 import { BackendError, normaliseBackendError } from "./errors";
+import { createPhotoUrl } from "./photos";
 import { fromVisitRow, toVisitRow, validateVisit, VISIT_COLUMNS, type StoredCity, type VisitRow } from "./model";
 
 export async function loadVisits(): Promise<StoredCity[]> {
@@ -7,7 +8,20 @@ export async function loadVisits(): Promise<StoredCity[]> {
   await requireCurrentUser();
   const { data, error } = await client.from("visits").select(VISIT_COLUMNS).order("date_from", { ascending: false }).order("created_at", { ascending: false });
   if (error) throw normaliseBackendError(error, "Could not load your visits.");
-  return (data as VisitRow[] || []).map(fromVisitRow);
+  const visits = (data as VisitRow[] || []).map(fromVisitRow);
+  if (!visits.length) return visits;
+  const { data: photos, error: photoError } = await client
+    .from("visit_photographs")
+    .select("visit_id, storage_path")
+    .in("visit_id", visits.map(visit => visit.id))
+    .order("created_at");
+  if (photoError) throw normaliseBackendError(photoError, "Could not load your visit photographs.");
+  const firstPhoto = new Map<string, string>();
+  for (const photo of photos || []) if (!firstPhoto.has(photo.visit_id)) firstPhoto.set(photo.visit_id, photo.storage_path);
+  return Promise.all(visits.map(async visit => {
+    const path = firstPhoto.get(visit.id);
+    return path ? { ...visit, photoUrl: await createPhotoUrl(path, 24 * 60 * 60) } : visit;
+  }));
 }
 
 export async function createVisit(city: Omit<StoredCity, "id">, operationId = crypto.randomUUID()): Promise<StoredCity> {

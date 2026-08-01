@@ -19,6 +19,7 @@ export type StoredCity = {
   dateTo: string;
   visitType: string;
   note: string;
+  photoUrl?: string;
 };
 
 export type VisitRow = {

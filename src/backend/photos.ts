@@ -16,7 +16,7 @@ export async function uploadVisitPhoto(visitId: string, file: File) {
     await client.storage.from("visit-photos").remove([path]);
     throw normaliseBackendError(recordError, "Could not attach this photograph.");
   }
-  return path;
+  return createPhotoUrl(path);
 }
 
 export async function createPhotoUrl(storagePath: string, expiresInSeconds = 3600) {

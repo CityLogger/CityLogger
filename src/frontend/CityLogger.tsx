@@ -7,7 +7,11 @@ import {
 } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createVisit, deleteVisit, downloadAccountData, loadVisits, uploadVisitPhoto, type StoredCity } from "../backend/index";
+import {
+  addWishlistCity, createPersonalList, createVisit, deleteVisit, downloadAccountData, loadAppState,
+  loadVisits, removeWishlistCity, savePersonalListCities, saveRankingOrder, saveYearlyGoal as saveStoredYearlyGoal,
+  uploadVisitPhoto, type StoredCity
+} from "../backend/index";
 import { authRedirectUrl, isSupabaseConfigured, supabase } from "../backend/supabase";
 
 type RatingKey = "personal" | "culture" | "architecture" | "food" | "nature" | "nightlife";
@@ -17,15 +21,16 @@ type CityId = number | string;
 type City = {
   id: CityId; name: string; country: string; continent: string; lat: number; lng: number;
   rating: number; ratings: Ratings; dateFrom: string; dateTo: string;
-  visitType: string; note: string; emoji: string;
+  visitType: string; note: string; emoji: string; photoUrl?: string;
 };
 
 type CityOption = {
+  id?: string;
   name: string; ascii?: string; country: string; continent: string;
   lat: number; lng: number; emoji: string; population?: number;
 };
 
-type PersonalList = { id: number; title: string; cityIds: CityId[] };
+type PersonalList = { id: CityId; title: string; cityIds: CityId[] };
 
 const starterCities: City[] = [
   { id: 1, name: "Lisbon", country: "Portugal", continent: "Europe", lat: 38.72, lng: -9.14, rating: 4.7, ratings: { personal: 5, culture: 4.5, architecture: 4.5, food: 5, nature: 4, nightlife: 5 }, dateFrom: "2025-05-09", dateTo: "2025-05-15", visitType: "Holiday", note: "Golden evenings, tiled streets and the best small plates.", emoji: "🇵🇹" },
@@ -277,6 +282,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
   const [authName, setAuthName] = useState("");
   const [authMessage, setAuthMessage] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
+  const [profileName, setProfileName] = useState("Alex Morgan");
   const [syncStatus, setSyncStatus] = useState<"idle" | "loading" | "saved" | "error">("idle");
   const syncRequest = useRef(0);
 
@@ -335,6 +341,15 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
       if (event === "SIGNED_OUT") {
         setCities(starterCities);
         setSelected(starterCities[0]);
+        setWishlist([
+          { name: "Mexico City", country: "Mexico", continent: "North America", lat: 19.43, lng: -99.13, emoji: "🇲🇽" },
+          { name: "Hanoi", country: "Vietnam", continent: "Asia", lat: 21.03, lng: 105.85, emoji: "🇻🇳" }
+        ]);
+        setLists([{ id: 1, title: "Most underrated", cityIds: [starterCities[0].id, starterCities[4].id, starterCities[2].id] }]);
+        setManualOrder(null);
+        setYearlyGoal(10);
+        setGoalDraft("10");
+        setProfileName("Alex Morgan");
       }
     });
     return () => listener.subscription.unsubscribe();
@@ -347,10 +362,18 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
       const requestId = ++syncRequest.current;
       setSyncStatus("loading");
       try {
-        const stored = await loadVisits();
+        const [stored, appState] = await Promise.all([loadVisits(), loadAppState()]);
         if (!active || requestId !== syncRequest.current) return;
         setCities(stored);
         setSelected(stored[0] || null);
+        setWishlist(appState.wishlist);
+        setLists(appState.lists);
+        setManualOrder(appState.rankingOrder.length ? appState.rankingOrder : null);
+        setYearlyGoal(appState.yearlyGoal);
+        setGoalDraft(String(appState.yearlyGoal));
+        setProfileName(appState.displayName || user.user_metadata?.display_name || user.email?.split("@")[0] || "Traveller");
+        if (stored.length >= 2) setCompareIds([stored[0].id, stored[1].id]);
+        else if (stored.length === 1) setCompareIds([stored[0].id, stored[0].id]);
         setSyncStatus("idle");
       } catch {
         if (active && requestId === syncRequest.current) setSyncStatus("error");
@@ -431,13 +454,23 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
     setAdding(true);
   }
 
-  function saveYearlyGoal() {
+  async function saveYearlyGoal() {
     const nextGoal = Math.min(999, Math.max(1, Math.round(Number(goalDraft))));
     if (!Number.isFinite(nextGoal)) return;
     setYearlyGoal(nextGoal);
     setGoalDraft(String(nextGoal));
     setEditingGoal(false);
-    window.localStorage.setItem("citylogger-yearly-goal-v2", String(nextGoal));
+    if (!user) {
+      window.localStorage.setItem("citylogger-yearly-goal-v2", String(nextGoal));
+      return;
+    }
+    try {
+      await saveStoredYearlyGoal(nextGoal);
+      setSyncStatus("saved");
+      window.setTimeout(() => setSyncStatus("idle"), 1800);
+    } catch {
+      setSyncStatus("error");
+    }
   }
 
   async function saveCity() {
@@ -467,7 +500,9 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
       window.setTimeout(() => setSyncStatus("idle"), 1800);
       if (photoFile) {
         try {
-          await uploadVisitPhoto(newCity.id, photoFile);
+          const photoUrl = await uploadVisitPhoto(newCity.id, photoFile);
+          setCities(current => current.map(city => city.id === newCity.id ? { ...city, photoUrl } : city));
+          setSelected(current => current?.id === newCity.id ? { ...current, photoUrl } : current);
         } catch {
           setSyncStatus("error");
           setAuthMessage("The visit was saved, but its photograph could not be uploaded. You can add it again later.");
@@ -564,13 +599,31 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
     }
   }
 
-  function addWantToVisit(city: CityOption) {
-    setWishlist(current => current.some(item => item.name === city.name && item.country === city.country)
-      ? current.filter(item => !(item.name === city.name && item.country === city.country))
-      : [...current, city]);
+  async function addWantToVisit(city: CityOption) {
+    const existing = wishlist.find(item => item.name === city.name && item.country === city.country);
+    if (!user) {
+      setAuthView("welcome");
+      setAuthMessage("Create an account or sign in to sync your Want to Visit list.");
+      setAuthOpen(true);
+      return;
+    }
+    setSyncStatus("loading");
+    try {
+      if (existing) {
+        await removeWishlistCity({ id: existing.id || "", name: existing.name, country: existing.country });
+        setWishlist(current => current.filter(item => !(item.name === city.name && item.country === city.country)));
+      } else {
+        const saved = await addWishlistCity(city);
+        setWishlist(current => [...current, saved]);
+      }
+      setSyncStatus("saved");
+      window.setTimeout(() => setSyncStatus("idle"), 1800);
+    } catch {
+      setSyncStatus("error");
+    }
   }
 
-  function reorderRanking(targetId: CityId) {
+  async function reorderRanking(targetId: CityId) {
     if (draggedCity === null || draggedCity === targetId) return;
     const order = displayedRanked.map(city => city.id);
     const from = order.indexOf(draggedCity);
@@ -578,17 +631,48 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
     order.splice(to, 0, order.splice(from, 1)[0]);
     setManualOrder(order);
     setDraggedCity(null);
+    if (user) {
+      try {
+        await saveRankingOrder(order.map(String));
+      } catch {
+        setSyncStatus("error");
+      }
+    }
   }
 
-  function createList() {
+  async function moveRankedCity(cityId: CityId, direction: -1 | 1) {
+    const order = displayedRanked.map(city => city.id);
+    const index = order.indexOf(cityId);
+    const next = index + direction;
+    if (index < 0 || next < 0 || next >= order.length) return;
+    [order[index], order[next]] = [order[next], order[index]];
+    setManualOrder(order);
+    if (user) try { await saveRankingOrder(order.map(String)); } catch { setSyncStatus("error"); }
+  }
+
+  async function createList() {
     const title = newListTitle.trim();
     if (!title) return;
-    setLists(current => [...current, { id: Date.now(), title, cityIds: [] }]);
-    setNewListTitle("");
+    if (!user) {
+      setAuthView("welcome");
+      setAuthMessage("Create an account or sign in to save personalised lists.");
+      setAuthOpen(true);
+      return;
+    }
+    setSyncStatus("loading");
+    try {
+      const saved = await createPersonalList(title, lists.length);
+      setLists(current => [...current, saved]);
+      setNewListTitle("");
+      setSyncStatus("saved");
+      window.setTimeout(() => setSyncStatus("idle"), 1800);
+    } catch {
+      setSyncStatus("error");
+    }
   }
 
-  function moveListCity(listId: number, cityId: CityId, direction: -1 | 1) {
-    setLists(current => current.map(list => {
+  async function moveListCity(listId: CityId, cityId: CityId, direction: -1 | 1) {
+    const nextLists = lists.map(list => {
       if (list.id !== listId) return list;
       const cityIds = [...list.cityIds];
       const index = cityIds.indexOf(cityId);
@@ -596,7 +680,27 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
       if (next < 0 || next >= cityIds.length) return list;
       [cityIds[index], cityIds[next]] = [cityIds[next], cityIds[index]];
       return { ...list, cityIds };
-    }));
+    });
+    setLists(nextLists);
+    if (user && typeof listId === "string") {
+      const list = nextLists.find(item => item.id === listId);
+      if (list) try { await savePersonalListCities(listId, list.cityIds.map(String)); } catch { setSyncStatus("error"); }
+    }
+  }
+
+  async function addCityToList(listId: CityId, cityId: CityId) {
+    const nextLists = lists.map(list => list.id === listId && !list.cityIds.includes(cityId) ? { ...list, cityIds: [...list.cityIds, cityId] } : list);
+    setLists(nextLists);
+    if (user && typeof listId === "string") {
+      const list = nextLists.find(item => item.id === listId);
+      if (list) try { await savePersonalListCities(listId, list.cityIds.map(String)); } catch { setSyncStatus("error"); }
+    }
+  }
+
+  async function toggleManualOrder() {
+    const next = manualOrder ? null : displayedRanked.map(city => city.id);
+    setManualOrder(next);
+    if (user) try { await saveRankingOrder(next ? next.map(String) : []); } catch { setSyncStatus("error"); }
   }
 
   return (
@@ -658,7 +762,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
               {selected && filtered.some(c => c.id === selected.id) && (
                 <article className="city-preview">
                   <button className="close-btn" onClick={() => setSelected(null)} aria-label="Close"><X/></button>
-                  <div className="photo-block"><span>{selected.emoji}</span><small>{selected.country.toUpperCase()}</small></div>
+                  <div className={`photo-block ${selected.photoUrl ? "has-photo" : ""}`}>{selected.photoUrl ? <img src={selected.photoUrl} alt={`A memory from ${selected.name}`}/> : <span>{selected.emoji}</span>}<small>{selected.country.toUpperCase()}</small></div>
                   <div className="preview-copy">
                     <p className="city-meta"><MapPin/>{selected.country} · {formatVisitDate(selected.dateFrom, selected.dateTo)}</p>
                     <h2>{selected.name}</h2>
@@ -676,7 +780,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
           <div className="rankings-layout">
             <div className="rankings-head">
               <div className="segmented">{categories.map(item => <button key={item} className={category === item ? "active" : ""} onClick={() => setCategory(item)}>{item}</button>)}</div>
-              <button className="filter-btn" onClick={() => nativeMode ? setFilterOpen(!filterOpen) : setManualOrder(manualOrder ? null : displayedRanked.map(city => city.id))}>
+              <button className="filter-btn" onClick={() => nativeMode ? setFilterOpen(!filterOpen) : toggleManualOrder()}>
                 {nativeMode ? <><SlidersHorizontal/>Filters{continent !== "All" && <span className="filter-dot"/>}</> : <><ListFilter/>{manualOrder ? "Custom order · Reset" : "Drag to reorder"}<ChevronDown/></>}
               </button>
               {nativeMode && filterOpen && <div className="filter-popover">
@@ -695,6 +799,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
                   <button className="rank-main rank-city-link" onClick={() => { setSelected(city); setTab("map"); }}><strong>{city.name}</strong><small>{city.country} · {formatVisitDate(city.dateFrom, city.dateTo)}</small></button>
                   <span className="rank-rating"><strong>{(scoreFor(city, category) || 0).toFixed(1)}</strong><Star fill={colorForScore(scoreFor(city, category) || 0)} color={colorForScore(scoreFor(city, category) || 0)}/></span>
                   <span className="rank-bar"><i style={{ width: `${(scoreFor(city, category) || 0) * 20}%`, background: colorForScore(scoreFor(city, category) || 0) }}/></span>
+                  <span className="rank-order-buttons native-only"><button disabled={index === 0} onClick={() => moveRankedCity(city.id, -1)} aria-label={`Move ${city.name} up`}>↑</button><button disabled={index === displayedRanked.length - 1} onClick={() => moveRankedCity(city.id, 1)} aria-label={`Move ${city.name} down`}>↓</button></span>
                 </div>
               ))}
             </div>
@@ -722,6 +827,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
           <div className="native-only city-detail-layout">
             <button className="city-detail-back" onClick={() => setTab("log")}><ArrowLeft/>Travel log</button>
             <article className="city-detail-card">
+              {selected.photoUrl && <img className="city-detail-photo" src={selected.photoUrl} alt={`A memory from ${selected.name}`}/>}
               <header>
                 <span className="city-detail-flag">{selected.emoji}</span>
                 <div><p className="kicker">{selected.country.toUpperCase()}</p><h2>{selected.name}</h2><small>{formatVisitDate(selected.dateFrom, selected.dateTo)}{selected.visitType ? ` · ${selected.visitType}` : ""}</small></div>
@@ -784,7 +890,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
                     })}
                     <select aria-label={`Add city to ${list.title}`} value="" onChange={event => {
                       const city = cities.find(candidate => String(candidate.id) === event.target.value);
-                      if (city) setLists(current => current.map(item => item.id === list.id && !item.cityIds.includes(city.id) ? { ...item, cityIds: [...item.cityIds, city.id] } : item));
+                      if (city) addCityToList(list.id, city.id);
                     }}><option value="">+ Add a city</option>{cities.filter(city => !list.cityIds.includes(city.id)).map(city => <option key={city.id} value={city.id}>{city.name}</option>)}</select>
                   </div>
                 </article>
@@ -820,8 +926,8 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
         {tab === "profile" && (
           <div className="profile-layout">
             <div className="profile-hero">
-              <span className="profile-avatar">AM</span>
-              <div><p className="kicker">TRAVEL JOURNAL</p><h2>Alex Morgan</h2><p>Collecting places, not things.</p></div>
+              <span className="profile-avatar">{profileName.slice(0, 2).toUpperCase()}</span>
+              <div><p className="kicker">TRAVEL JOURNAL</p><h2>{profileName}</h2><p>Collecting places, not things.</p></div>
             </div>
             <div className="stats-grid">
               <article><MapPin/><strong>{cities.length}</strong><span>Cities logged</span></article>

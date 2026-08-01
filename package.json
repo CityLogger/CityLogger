@@ -9,6 +9,8 @@
     "mobile:sync": "pnpm build:mobile && cap sync ios",
     "mobile:open": "cap open ios",
     "start": "vinext start",
+    "review:seed": "node scripts/seed-review-account.mjs",
+    "review:verify": "node scripts/verify-review-account.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
