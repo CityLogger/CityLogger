@@ -2,6 +2,7 @@
   "name": "citylogger",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "vinext dev",
     "build": "vinext build && node scripts/prepare-sites.mjs",
