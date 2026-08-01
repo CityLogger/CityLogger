@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  ArrowLeft, BookOpen, CalendarDays, Camera, Check, ChevronDown, Compass, Filter,
+  ArrowLeft, BookOpen, CalendarDays, Check, ChevronDown, Compass, Filter,
   GitCompareArrows, GripVertical, Heart, ListFilter, ListPlus, Map as MapIcon, MapPin,
   Pencil, Plus, Search, SlidersHorizontal, Sparkles, Star, Trophy, UserRound, X
 } from "lucide-react";
@@ -10,7 +10,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   addWishlistCity, createPersonalList, createVisit, deleteVisit, downloadAccountData, loadAppState,
   loadVisits, removeWishlistCity, savePersonalListCities, saveRankingOrder, saveYearlyGoal as saveStoredYearlyGoal,
-  uploadVisitPhoto, type StoredCity
+  updateVisit, type StoredCity
 } from "../backend/index";
 import { authRedirectUrl, isSupabaseConfigured, supabase } from "../backend/supabase";
 
@@ -21,7 +21,7 @@ type CityId = number | string;
 type City = {
   id: CityId; name: string; country: string; continent: string; lat: number; lng: number;
   rating: number; ratings: Ratings; dateFrom: string; dateTo: string;
-  visitType: string; note: string; emoji: string; photoUrl?: string;
+  visitType: string; note: string; emoji: string;
 };
 
 type CityOption = {
@@ -247,6 +247,8 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
   const [cities, setCities] = useState(starterCities);
   const [selected, setSelected] = useState<City | null>(nativeMode ? null : starterCities[0]);
   const [adding, setAdding] = useState(false);
+  const [editingVisitId, setEditingVisitId] = useState<string | null>(null);
+  const [editorReturnTab, setEditorReturnTab] = useState<"map" | "city">("map");
   const [query, setQuery] = useState("");
   const [candidate, setCandidate] = useState<CityOption | null>(null);
   const [searchResults, setSearchResults] = useState<CityOption[]>(suggestions);
@@ -256,7 +258,6 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
   const [dateTo, setDateTo] = useState("2026-07-05");
   const [visitType, setVisitType] = useState("");
   const [note, setNote] = useState("");
-  const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [category, setCategory] = useState("Overall");
   const [filterOpen, setFilterOpen] = useState(false);
   const [continent, setContinent] = useState("All");
@@ -436,6 +437,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
   }, [query]);
 
   function beginAdd(city: CityOption) {
+    setEditingVisitId(null);
     setCandidate(city);
     setQuery(city.name);
     setRatings({ personal: 4, culture: 4, architecture: 4, food: 4, nature: null, nightlife: null });
@@ -443,15 +445,40 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
     setDateTo("2026-07-05");
     setVisitType("");
     setNote("");
-    setPhotoFile(null);
   }
 
   function openAddCity() {
+    setEditingVisitId(null);
     setCandidate(null);
     setQuery("");
     setSearchResults(suggestions);
     setSearching(false);
-    setPhotoFile(null);
+    setAdding(true);
+  }
+
+  function closeVisitEditor() {
+    setAdding(false);
+    setEditingVisitId(null);
+  }
+
+  function editSelectedVisit() {
+    if (!user || !selected || typeof selected.id !== "string") return;
+    setEditingVisitId(selected.id);
+    setEditorReturnTab(tab === "city" ? "city" : "map");
+    setCandidate({
+      name: selected.name,
+      country: selected.country,
+      continent: selected.continent,
+      lat: selected.lat,
+      lng: selected.lng,
+      emoji: selected.emoji
+    });
+    setQuery(selected.name);
+    setRatings({ ...selected.ratings });
+    setDateFrom(selected.dateFrom);
+    setDateTo(selected.dateTo);
+    setVisitType(selected.visitType);
+    setNote(selected.note);
     setAdding(true);
   }
 
@@ -493,22 +520,22 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
     };
     setSyncStatus("loading");
     try {
-      const operationId = crypto.randomUUID();
-      const newCity = await createVisit(draftCity as Omit<StoredCity, "id">, operationId);
-      setCities(prev => [newCity, ...prev]);
-      setSelected(newCity); setAdding(false); setCandidate(null); setQuery(""); setTab("map");
+      const savedCity = editingVisitId
+        ? await updateVisit({ ...draftCity, id: editingVisitId } as StoredCity)
+        : await createVisit(draftCity as Omit<StoredCity, "id">, crypto.randomUUID());
+      if (editingVisitId) {
+        setCities(current => current.map(city => city.id === editingVisitId ? savedCity : city));
+      } else {
+        setCities(current => [savedCity, ...current]);
+      }
+      setSelected(savedCity);
+      setAdding(false);
+      setCandidate(null);
+      setQuery("");
+      setTab(editingVisitId ? editorReturnTab : "map");
+      setEditingVisitId(null);
       setSyncStatus("saved");
       window.setTimeout(() => setSyncStatus("idle"), 1800);
-      if (photoFile) {
-        try {
-          const photoUrl = await uploadVisitPhoto(newCity.id, photoFile);
-          setCities(current => current.map(city => city.id === newCity.id ? { ...city, photoUrl } : city));
-          setSelected(current => current?.id === newCity.id ? { ...current, photoUrl } : current);
-        } catch {
-          setSyncStatus("error");
-          setAuthMessage("The visit was saved, but its photograph could not be uploaded. You can add it again later.");
-        }
-      }
     } catch (error) {
       setSyncStatus("error");
       setAuthMessage(error instanceof Error ? error.message : "The visit could not be saved.");
@@ -577,7 +604,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
 
   async function removeAccount() {
     if (!supabase || !user) return;
-    const confirmed = window.confirm("Permanently delete your account, visits, ratings, notes and photographs? This cannot be undone.");
+    const confirmed = window.confirm("Permanently delete your account, visits, ratings and notes? This cannot be undone.");
     if (!confirmed) return;
     setSyncStatus("loading");
     const { error } = await supabase.functions.invoke("delete-account", { method: "POST" });
@@ -595,12 +622,13 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
 
   async function removeSelectedVisit() {
     if (!user || !selected || typeof selected.id !== "string") return;
-    if (!window.confirm(`Delete ${selected.name}? Any attached photographs will also be permanently deleted.`)) return;
+    if (!window.confirm(`Delete ${selected.name}? This cannot be undone.`)) return;
     setSyncStatus("loading");
     try {
       await deleteVisit(selected.id);
       setCities(current => current.filter(city => city.id !== selected.id));
       setSelected(null);
+      if (tab === "city") setTab("log");
       setSyncStatus("idle");
     } catch {
       setSyncStatus("error");
@@ -770,13 +798,19 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
               {selected && filtered.some(c => c.id === selected.id) && (
                 <article className="city-preview">
                   <button className="close-btn" onClick={() => setSelected(null)} aria-label="Close"><X/></button>
-                  <div className={`photo-block ${selected.photoUrl ? "has-photo" : ""}`}>{selected.photoUrl ? <img src={selected.photoUrl} alt={`A memory from ${selected.name}`}/> : <span>{selected.emoji}</span>}<small>{selected.country.toUpperCase()}</small></div>
+                  <div className="photo-block"><span>{selected.emoji}</span><small>{selected.country.toUpperCase()}</small></div>
                   <div className="preview-copy">
                     <p className="city-meta"><MapPin/>{selected.country} · {formatVisitDate(selected.dateFrom, selected.dateTo)}</p>
                     <h2>{selected.name}</h2>
                     <div className="stars">{[1,2,3,4,5].map(n => <Star key={n} fill={n <= Math.round(selected.rating) ? colorForScore(selected.rating) : "none"} color={n <= Math.round(selected.rating) ? colorForScore(selected.rating) : "#c7c9c3"}/>)}<strong>{selected.rating.toFixed(1)}</strong></div>
                     <p>“{selected.note}”</p>
-                    <div className="preview-actions"><button className="text-btn">View city story <span>→</span></button>{user && typeof selected.id === "string" && <button className="delete-text" onClick={removeSelectedVisit}>Delete visit</button>}</div>
+                    <div className="preview-actions">
+                      <button className="text-btn">View city story <span>→</span></button>
+                      {user && typeof selected.id === "string" && <div className="visit-actions">
+                        <button className="visit-action edit" onClick={editSelectedVisit}><Pencil/>Edit</button>
+                        <button className="visit-action delete" onClick={removeSelectedVisit}><X/>Delete</button>
+                      </div>}
+                    </div>
                   </div>
                 </article>
               )}
@@ -835,7 +869,6 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
           <div className="native-only city-detail-layout">
             <button className="city-detail-back" onClick={() => setTab("log")}><ArrowLeft/>Travel log</button>
             <article className="city-detail-card">
-              {selected.photoUrl && <img className="city-detail-photo" src={selected.photoUrl} alt={`A memory from ${selected.name}`}/>}
               <header>
                 <span className="city-detail-flag">{selected.emoji}</span>
                 <div><p className="kicker">{selected.country.toUpperCase()}</p><h2>{selected.name}</h2><small>{formatVisitDate(selected.dateFrom, selected.dateTo)}{selected.visitType ? ` · ${selected.visitType}` : ""}</small></div>
@@ -847,6 +880,10 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
                 ))}
               </div>
               <section><p className="kicker">YOUR MEMORY</p><p>“{selected.note}”</p></section>
+              {user && typeof selected.id === "string" && <div className="city-detail-actions">
+                <button className="visit-action edit" onClick={editSelectedVisit}><Pencil/>Edit visit</button>
+                <button className="visit-action delete" onClick={removeSelectedVisit}><X/>Delete</button>
+              </div>}
               <button className="city-detail-map" onClick={() => setTab("map")}><MapPin/>Show on map</button>
             </article>
           </div>
@@ -968,7 +1005,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
               <p className="kicker">ACCOUNT & PRIVACY</p>
               {user ? <>
                 <h3>{user.email}</h3>
-                <p>Your cities, ratings, notes and photographs are private and accessible only to this account.</p>
+                <p>Your cities, ratings and notes are private and accessible only to this account.</p>
                 <div className="settings-actions">
                   <button onClick={exportMyData}>Download My Data</button>
                   <a href="/privacy">Privacy Policy</a>
@@ -997,12 +1034,12 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
       </nav>
 
       {adding && (
-        <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) setAdding(false); }}>
+        <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) closeVisitEditor(); }}>
           <section className="add-modal" role="dialog" aria-modal="true" aria-labelledby="add-title">
             <div className="modal-head">
-              <button className="back-btn" onClick={() => candidate ? setCandidate(null) : setAdding(false)}><ArrowLeft/></button>
-              <div><p className="kicker">NEW MEMORY</p><h2 id="add-title">{candidate ? `How was ${candidate.name}?` : "Where have you been?"}</h2></div>
-              <button className="close-btn static" onClick={() => setAdding(false)}><X/></button>
+              <button className="back-btn" onClick={() => editingVisitId ? closeVisitEditor() : candidate ? setCandidate(null) : closeVisitEditor()}><ArrowLeft/></button>
+              <div><p className="kicker">{editingVisitId ? "EDIT MEMORY" : "NEW MEMORY"}</p><h2 id="add-title">{candidate ? editingVisitId ? `Update ${candidate.name}` : `How was ${candidate.name}?` : "Where have you been?"}</h2></div>
+              <button className="close-btn static" onClick={closeVisitEditor}><X/></button>
             </div>
             {!candidate ? (
               <>
@@ -1042,8 +1079,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
                 </div>
                 <label className="select-field"><span><Filter/>Visit type <small>OPTIONAL</small></span><select value={visitType} onChange={event => setVisitType(event.target.value)}><option value="">Choose a visit type</option><option>Holiday</option><option>City break</option><option>Road trip</option><option>Work</option><option>Study</option><option>Lived there</option><option>Visiting friends or family</option><option>Day trip</option></select></label>
                 <label className="note-field"><span>Your memory <small>OPTIONAL</small></span><textarea value={note} onChange={e => setNote(e.target.value)} maxLength={160} placeholder="What made this city memorable?"/><small>{note.length}/160</small></label>
-                <label className="photo-btn"><Camera/>{photoFile ? photoFile.name : "Add a favourite photo"} <small>{photoFile ? "Ready to upload" : "Optional · JPEG, PNG, WebP or HEIC · 10 MB max"}</small><input type="file" accept="image/jpeg,image/png,image/webp,image/heic" onChange={event => setPhotoFile(event.target.files?.[0] || null)}/></label>
-                <button className="save-btn" disabled={!requiredRatingsComplete || !dateFrom || !dateTo || dateTo < dateFrom} onClick={saveCity}><MapPin/>Add to my map · {draftOverall.toFixed(1)}</button>
+                <button className="save-btn" disabled={!requiredRatingsComplete || !dateFrom || !dateTo || dateTo < dateFrom} onClick={saveCity}>{editingVisitId ? <><Check/>Save changes · {draftOverall.toFixed(1)}</> : <><MapPin/>Add to my map · {draftOverall.toFixed(1)}</>}</button>
               </div>
             )}
           </section>

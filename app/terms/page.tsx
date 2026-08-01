@@ -8,7 +8,7 @@ export default function Terms() {
     <h2>Your account</h2>
     <p>You are responsible for keeping your sign-in details secure and for information added through your account. CityLogger is a personal travel journal and does not currently publish your content.</p>
     <h2>Your content</h2>
-    <p>You retain ownership of notes and photographs you add. You grant CityLogger the limited permission needed to store, process and display that content back to you as part of the service.</p>
+    <p>You retain ownership of the notes you add. You grant CityLogger the limited permission needed to store, process and display that content back to you as part of the service.</p>
     <h2>Acceptable use</h2>
     <p>Do not upload unlawful content, content you do not have permission to use, malicious files or material that infringes another person’s rights.</p>
     <h2>Availability and deletion</h2>

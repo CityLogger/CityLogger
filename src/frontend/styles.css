@@ -102,13 +102,14 @@ h1 { font-size: clamp(27px, 3vw, 42px); line-height: 1.05; }
 .stars strong { margin-left: 5px; font-size: 12px; color: var(--ink); }
 .close-btn, .back-btn { border: 0; background: transparent; display: grid; place-items: center; cursor: pointer; }
 .city-preview > .close-btn { position: absolute; right: 10px; top: 10px; width: 27px; height: 27px; border-radius: 50%; background: rgba(255,255,255,.75); }
-.photo-block.has-photo { position: relative; padding: 0; }
-.photo-block.has-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.photo-block.has-photo small { position: absolute; left: 9px; bottom: 8px; padding: 4px 7px; border-radius: 999px; background: rgba(24,36,28,.72); color: white; }
-.city-detail-photo { width: 100%; max-height: 260px; object-fit: cover; border-radius: 16px; margin-bottom: 18px; }
 .text-btn { border: 0; padding: 0; background: transparent; color: var(--green); font-size: 11px; font-weight: 700; cursor: pointer; }
 .preview-actions { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-.delete-text { border: 0; background: transparent; color: #b44e49; font-size: 10px; cursor: pointer; }
+.visit-actions, .city-detail-actions { display: flex; align-items: center; gap: 7px; }
+.visit-action { min-height: 30px; border: 1px solid transparent; border-radius: 999px; padding: 6px 10px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; font: inherit; font-size: 10px; font-weight: 700; cursor: pointer; }
+.visit-action svg { width: 12px; height: 12px; }
+.visit-action.edit { border-color: #cfe0d5; color: var(--green); background: #edf5ef; }
+.visit-action.delete { border-color: #ead1ce; color: #a84440; background: #fff1ef; }
+.visit-action:hover { transform: translateY(-1px); filter: brightness(.98); }
 .ranking-list { display: grid; gap: 8px; }
 .rank-row { width: 100%; border: 1px solid transparent; background: rgba(255,254,250,.72); padding: 14px 18px; border-radius: 15px; display: grid; grid-template-columns: 22px 34px 42px minmax(130px,1fr) 70px minmax(100px,180px); align-items: center; text-align: left; cursor: grab; transition: .2s; }
 .rank-row:hover { border-color: #cfd8d1; transform: translateY(-1px); background: var(--card); box-shadow: 0 8px 25px rgba(42,47,40,.06); }
@@ -276,9 +277,6 @@ h1 { font-size: clamp(27px, 3vw, 42px); line-height: 1.05; }
 .note-field textarea { height: 80px; resize: none; }
 .note-field > small { position: absolute; right: 9px; bottom: 8px; color: var(--muted); font-size: 9px; }
 .note-field span small { margin-left: auto; font-size: 8px; letter-spacing: 1px; }
-.photo-btn { width: 100%; margin: 12px 0; border: 1px dashed #cbd0c8; background: #fafaf6; border-radius: 11px; padding: 13px; display: flex; align-items: center; justify-content: center; gap: 7px; cursor: pointer; color: #666b64; }
-.photo-btn small { color: #a0a39d; }
-.photo-btn input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; }
 .save-btn { width: 100%; padding: 14px; }
 .save-btn:disabled { opacity: .4; cursor: not-allowed; box-shadow: none; }
 .auth-backdrop { z-index: 30; }

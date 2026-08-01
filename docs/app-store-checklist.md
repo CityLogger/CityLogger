@@ -9,18 +9,17 @@ This checklist supports preparation but does not guarantee App Store approval.
 - [ ] Replace every bracketed legal and business placeholder in the Privacy Policy and Terms.
 - [x] Create and email-confirm a dedicated App Review account with no MFA or inbox dependency.
 - [x] Seed the review account with 10 visits, varied ratings, optional ratings, visit types, dates and notes.
-- [x] Seed two private photographs, five Want to Visit cities, two personalised lists, a custom ranking and a 12-city yearly goal.
+- [x] Seed five Want to Visit cities, two personalised lists, a custom ranking and a 12-city yearly goal.
 - [x] Persist goals, rankings, Want to Visit and personalised lists in Supabase so clean devices receive them.
 - [ ] Confirm account deletion is available at Profile → Account & Privacy → Delete Account.
 - [ ] Confirm data export is available at Profile → Account & Privacy → Download My Data.
 - [x] Connect and verify the production Supabase project.
 - [x] Apply all database migrations and verify account access through Row Level Security.
-- [x] Confirm the `visit-photos` Storage bucket is private and signed URLs load for the review account.
 - [ ] Deploy the authenticated `delete-account` Edge Function.
 - [ ] Configure Supabase email verification templates and sender details.
 - [ ] Add production and native-app authentication redirect URLs.
 - [ ] Test forgotten-password and password-recovery redirects on a physical iPhone.
-- [ ] Complete App Store privacy disclosures for email, user content, photos, identifiers and product interaction as actually collected.
+- [ ] Complete App Store privacy disclosures for email, user content, identifiers and product interaction as actually collected.
 - [ ] Record accessibility support accurately in App Store Connect.
 - [ ] Add permission usage descriptions only for capabilities the final native app requests.
 - [x] Test review-account sign-in and pre-populated data in a clean browser session at iPhone 17 Pro Max dimensions.
@@ -48,7 +47,7 @@ To review the pre-populated content: launch the app, tap **Profile** in the bott
 
 - **Map** shows 10 rated visited-city markers and 5 smaller purple Want to Visit markers.
 - **Rankings** contains a manually ordered 10-city ranking; use the up/down controls to change the order on iPhone or iPad.
-- **Log** contains visits from 2021–2026. Tap Lisbon or Kyoto to view full category ratings, dates, visit type, note and photograph.
+- **Log** contains visits from 2021–2026. Tap Lisbon or Kyoto to view full category ratings, dates, visit type and note.
 - **Lists** contains Want to Visit, Best food cities and Most underrated. Compare Cities is at the bottom of this section.
 - **Profile** shows 3 of 12 cities completed for the 2026 goal, plus data export and account deletion.
 

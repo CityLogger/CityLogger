@@ -1,5 +1,3 @@
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 
 const url = process.env.SUPABASE_URL?.replace(/\/$/, "");
@@ -89,25 +87,11 @@ const listCities = [
 ].map(([list_id, visit_id, position]) => ({ list_id, user_id: userId, visit_id, position }));
 await request("/rest/v1/personal_list_cities", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify(listCities) });
 
-for (const [visit, filename, localPath] of [
-  [visits[0], "lisbon-review-memory.png", "review-content/lisbon-review-memory.png"],
-  [visits[1], "kyoto-review-memory.png", "review-content/kyoto-review-memory.png"]
-]) {
-  const storagePath = `${userId}/${visit.id}/${filename}`;
-  const bytes = new Uint8Array(await readFile(resolve(localPath)));
-  await request(`/storage/v1/object/visit-photos/${storagePath}`, { method: "POST", headers: { "Content-Type": "image/png", "x-upsert": "true" }, body: bytes });
-  await request("/rest/v1/visit_photographs", {
-    method: "POST", headers: { Prefer: "return=minimal" },
-    body: JSON.stringify({ user_id: userId, visit_id: visit.id, storage_path: storagePath })
-  });
-}
-
 console.log(JSON.stringify({
   email,
   account_id: userId,
   email_verified: Boolean(user.email_confirmed_at),
   visits: visits.length,
-  photographs: 2,
   want_to_visit: wishlist.length,
   personal_lists: lists.length,
   yearly_goal: 12,
