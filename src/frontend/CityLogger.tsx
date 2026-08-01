@@ -52,6 +52,7 @@ const suggestions: CityOption[] = [
 const categories = ["Overall", "Personal", "Culture", "Architecture", "Food", "Nature", "Nightlife"];
 const requiredRatingKeys: RatingKey[] = ["personal", "culture", "architecture", "food"];
 const optionalRatingKeys: RatingKey[] = ["nature", "nightlife"];
+const reviewAccountEmail = "appreview@citylogger.test";
 const colorForScore = (score: number) =>
   score > 4.5 ? "#236844" :
   score > 4 ? "#62A461" :
@@ -523,6 +524,13 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
     setAuthMessage("");
     try {
       if (authView === "signup") {
+        if (authEmail.trim().toLowerCase() === reviewAccountEmail) {
+          const { error } = await supabase.auth.signInWithPassword({ email: authEmail.trim(), password: authPassword });
+          if (error) throw error;
+          setAuthMessage("");
+          setAuthOpen(false);
+          return;
+        }
         const { data, error } = await supabase.auth.signUp({
           email: authEmail,
           password: authPassword,
@@ -1064,7 +1072,8 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
               {authView !== "reset" && <label className="auth-field"><span>Email</span><input type="email" value={authEmail} onChange={event => setAuthEmail(event.target.value)} autoComplete="email"/></label>}
               {authView !== "forgot" && <label className="auth-field"><span>Password</span><input type="password" minLength={8} value={authPassword} onChange={event => setAuthPassword(event.target.value)} autoComplete={authView === "signin" ? "current-password" : "new-password"}/></label>}
               {authMessage && <p className="auth-message">{authMessage}</p>}
-              <button className="save-btn" disabled={authBusy || (authView !== "reset" && !authEmail) || (authView !== "forgot" && authPassword.length < 8)} onClick={submitAuth}>{authBusy ? "Please wait…" : authView === "signup" ? "Create account" : authView === "signin" ? "Sign in" : authView === "forgot" ? "Send reset email" : "Update password"}</button>
+              {authView === "signup" && authEmail.trim().toLowerCase() === reviewAccountEmail && <p className="config-note">This is the pre-confirmed App Review account. Continue to sign in directly—no email verification is required.</p>}
+              <button className="save-btn" disabled={authBusy || (authView !== "reset" && !authEmail) || (authView !== "forgot" && authPassword.length < 8)} onClick={submitAuth}>{authBusy ? "Please wait…" : authView === "signup" && authEmail.trim().toLowerCase() === reviewAccountEmail ? "Open review account" : authView === "signup" ? "Create account" : authView === "signin" ? "Sign in" : authView === "forgot" ? "Send reset email" : "Update password"}</button>
               {authView === "signin" && <button className="forgot-link" onClick={() => { setAuthView("forgot"); setAuthMessage(""); }}>Forgotten your password?</button>}
               {authView === "signup" && <p className="legal-copy">Your account is private. Read our <a href="/privacy">Privacy Policy</a> and <a href="/terms">Terms</a>.</p>}
             </>}
