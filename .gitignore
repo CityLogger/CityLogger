@@ -9,4 +9,5 @@ outputs/
 .env*
 !.env.example
 work/
+.wrangler/
 supabase/.temp/

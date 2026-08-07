@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vinext dev",
-    "build": "vinext build && node scripts/prepare-sites.mjs",
+    "build": "vinext build",
     "build:mobile": "vite build --config vite.mobile.config.ts",
     "mobile:sync": "pnpm build:mobile && cap sync ios",
     "mobile:open": "cap open ios",
@@ -28,6 +28,7 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^8.4.2",
+    "@cloudflare/vite-plugin": "1.37.1",
     "@types/leaflet": "^1.9.21",
     "@types/node": "^22.10.2",
     "@types/react": "^19.0.3",
@@ -39,6 +40,7 @@
     "typescript": "^5.7.2",
     "vinext": "1.0.0-beta.2",
     "vite": "^8.1.5",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "wrangler": "4.92.0"
   }
 }
