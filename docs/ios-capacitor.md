@@ -44,6 +44,28 @@ In Xcode:
 4. Replace the generated app icon and splash assets.
 5. Run on an iPhone simulator and a physical iPhone.
 
+
+## Current iOS SDK scene lifecycle compatibility
+
+The current Xcode/iOS SDK requires the UIKit scene-based lifecycle. The generated
+Capacitor project has therefore been updated to support `UIScene` rather than relying
+only on the older application lifecycle.
+
+The native iOS project intentionally includes these changes:
+
+- `ios/App/App/SceneDelegate.swift` implements `UIWindowSceneDelegate` and must remain
+  included in the Xcode **App** target.
+- `AppDelegate.swift` returns the `Default Configuration` scene configuration from
+  `application(_:configurationForConnecting:options:)`.
+- `Info.plist` contains a `UIApplicationSceneManifest` for
+  `UIWindowSceneSessionRoleApplication`, using `Default Configuration`,
+  `$(PRODUCT_MODULE_NAME).SceneDelegate`, and the existing `Main` storyboard.
+
+These changes fixed a launch failure where the current iOS SDK reported that the
+`UIScene` lifecycle was required. Do not remove or overwrite them when updating or
+regenerating the Capacitor iOS project without first verifying that the generated
+project provides equivalent scene lifecycle support.
+
 ## Before TestFlight
 
 - Deploy the Supabase schema and account-deletion function.
