@@ -23,7 +23,6 @@ export default function Support() {
       <div>
         <p className="kicker">CONTACT SUPPORT</p>
         <h2 id="contact-support">Email the CityLogger team</h2>
-        <p>We aim to reply within five working days.</p>
       </div>
       <a className="support-email" href={`mailto:${supportEmail}?subject=CityLogger%20support%20request`}>{supportEmail}</a>
     </section>
