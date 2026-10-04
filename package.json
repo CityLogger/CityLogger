@@ -12,6 +12,7 @@
     "start": "vinext start",
     "review:seed": "node scripts/seed-review-account.mjs",
     "review:verify": "node scripts/verify-review-account.mjs",
+    "release:check": "node scripts/check-release-readiness.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

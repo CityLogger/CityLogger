@@ -287,6 +287,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
   const [profileName, setProfileName] = useState("Alex Morgan");
   const [syncStatus, setSyncStatus] = useState<"idle" | "loading" | "saved" | "error">("idle");
   const syncRequest = useRef(0);
+  const publicPageUrl = (path: string) => nativeMode ? `https://citylogger.app${path}` : path;
 
   const filtered = useMemo(() =>
     cities.filter(city =>
@@ -1008,8 +1009,9 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
                 <p>Your cities, ratings and notes are private and accessible only to this account.</p>
                 <div className="settings-actions">
                   <button onClick={exportMyData}>Download My Data</button>
-                  <a href="/privacy">Privacy Policy</a>
-                  <a href="/terms">Terms of Use</a>
+                  <a href={publicPageUrl("/support")} target={nativeMode ? "_blank" : undefined} rel={nativeMode ? "noreferrer" : undefined}>Support</a>
+                  <a href={publicPageUrl("/privacy")} target={nativeMode ? "_blank" : undefined} rel={nativeMode ? "noreferrer" : undefined}>Privacy Policy</a>
+                  <a href={publicPageUrl("/terms")} target={nativeMode ? "_blank" : undefined} rel={nativeMode ? "noreferrer" : undefined}>Terms of Use</a>
                   <button onClick={() => supabase?.auth.signOut()}>Sign out</button>
                   <button className="danger" onClick={removeAccount}>Delete Account</button>
                 </div>
@@ -1099,7 +1101,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
               {!isSupabaseConfigured && <p className="config-note">Cloud accounts are ready in the code but this preview still needs its Supabase project keys.</p>}
               <button className="save-btn" onClick={() => { setAuthView("signup"); setAuthMessage(""); }}>Create free account</button>
               <button className="account-btn wide" onClick={() => { setAuthView("signin"); setAuthMessage(""); }}>I already have an account</button>
-              <p className="legal-copy">By creating an account, you agree to the <a href="/terms">Terms</a> and acknowledge the <a href="/privacy">Privacy Policy</a>.</p>
+              <p className="legal-copy">By creating an account, you agree to the <a href={publicPageUrl("/terms")} target={nativeMode ? "_blank" : undefined} rel={nativeMode ? "noreferrer" : undefined}>Terms</a> and acknowledge the <a href={publicPageUrl("/privacy")} target={nativeMode ? "_blank" : undefined} rel={nativeMode ? "noreferrer" : undefined}>Privacy Policy</a>.</p>
             </> : <>
               <button className="auth-back" onClick={() => { setAuthView("welcome"); setAuthMessage(""); }}><ArrowLeft/>Back</button>
               <p className="kicker">{authView === "signup" ? "CREATE ACCOUNT" : authView === "signin" ? "WELCOME BACK" : authView === "forgot" ? "RESET PASSWORD" : "CHOOSE A NEW PASSWORD"}</p>
@@ -1111,7 +1113,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
               {authView === "signup" && authEmail.trim().toLowerCase() === reviewAccountEmail && <p className="config-note">This is the pre-confirmed App Review account. Continue to sign in directly—no email verification is required.</p>}
               <button className="save-btn" disabled={authBusy || (authView !== "reset" && !authEmail) || (authView !== "forgot" && authPassword.length < 8)} onClick={submitAuth}>{authBusy ? "Please wait…" : authView === "signup" && authEmail.trim().toLowerCase() === reviewAccountEmail ? "Open review account" : authView === "signup" ? "Create account" : authView === "signin" ? "Sign in" : authView === "forgot" ? "Send reset email" : "Update password"}</button>
               {authView === "signin" && <button className="forgot-link" onClick={() => { setAuthView("forgot"); setAuthMessage(""); }}>Forgotten your password?</button>}
-              {authView === "signup" && <p className="legal-copy">Your account is private. Read our <a href="/privacy">Privacy Policy</a> and <a href="/terms">Terms</a>.</p>}
+              {authView === "signup" && <p className="legal-copy">Your account is private. Read our <a href={publicPageUrl("/privacy")} target={nativeMode ? "_blank" : undefined} rel={nativeMode ? "noreferrer" : undefined}>Privacy Policy</a>, <a href={publicPageUrl("/terms")} target={nativeMode ? "_blank" : undefined} rel={nativeMode ? "noreferrer" : undefined}>Terms</a> and <a href={publicPageUrl("/support")} target={nativeMode ? "_blank" : undefined} rel={nativeMode ? "noreferrer" : undefined}>Support</a>.</p>}
             </>}
           </section>
         </div>

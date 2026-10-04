@@ -13,11 +13,30 @@
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; min-height: 100%; background: var(--paper); color: var(--ink); font-family: "DM Sans", sans-serif; }
-.legal-page { max-width: 760px; margin: 0 auto; padding: 50px 24px 80px; line-height: 1.65; }
-.legal-page > a { display: inline-block; margin-bottom: 38px; color: var(--green); text-decoration: none; }
-.legal-page h2 { margin-top: 32px; font-size: 21px; }
-.legal-page p { color: #5f645c; }
-.legal-placeholder { padding: 14px; border-radius: 10px; background: #f4eee1; color: #765f31 !important; }
+.legal-page { max-width: 780px; margin: 0 auto; padding: 50px 24px 80px; font-size: 16px; line-height: 1.7; }
+.legal-page a { color: var(--green); font-weight: 600; text-underline-offset: 3px; }
+.legal-page h1 { margin-bottom: 10px; }
+.legal-page h2 { margin-top: 34px; font-size: 21px; }
+.legal-page p, .legal-page li { color: #5f645c; }
+.legal-page li + li { margin-top: 8px; }
+.legal-nav { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 42px; }
+.legal-nav a { text-decoration: none; }
+.legal-nav span { color: #a7aaa3; }
+.legal-summary { margin: 24px 0 34px; padding: 20px 22px; border: 1px solid #d8e4da; border-radius: 16px; background: var(--green-soft); color: #385b48 !important; font-size: 17px; }
+.support-contact { margin: 28px 0; padding: 24px; border-radius: 18px; background: var(--green); color: white; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.support-contact h2 { margin: 0 0 6px; color: white; }
+.support-contact p { margin: 0; color: rgba(255,255,255,.8); }
+.support-contact .kicker { margin-bottom: 6px; color: #cfe6d7; }
+.support-email { flex: 0 0 auto; padding: 11px 14px; border-radius: 11px; background: white; color: var(--green) !important; text-decoration: none; }
+.support-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 30px 0; }
+.support-card { padding: 20px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); }
+.support-card h2 { margin: 0 0 9px; font-size: 18px; }
+.support-card p { margin: 0; }
+@media (max-width: 620px) {
+  .legal-page { padding: 32px 18px 64px; }
+  .support-contact { align-items: flex-start; flex-direction: column; }
+  .support-grid { grid-template-columns: 1fr; }
+}
 button, input, select, textarea { font: inherit; }
 button { color: inherit; }
 svg { width: 18px; height: 18px; stroke-width: 1.8; }

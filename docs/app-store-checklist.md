@@ -1,60 +1,78 @@
-# CityLogger App Store checklist
+# CityLogger App Store resubmission checklist
 
-This checklist supports preparation but does not guarantee App Store approval.
+Last code review: 4 October 2026. This checklist supports preparation but does not guarantee approval.
 
-## Required before submission
+## Implemented in the product
 
-- [ ] Publish the completed Privacy Policy and enter its public URL in App Store Connect.
-- [ ] Publish a working support page with current contact details and enter its URL.
-- [ ] Replace every bracketed legal and business placeholder in the Privacy Policy and Terms.
-- [x] Create and email-confirm a dedicated App Review account with no MFA or inbox dependency.
-- [x] Seed the review account with 10 visits, varied ratings, optional ratings, visit types, dates and notes.
-- [x] Seed five Want to Visit cities, two personalised lists, a custom ranking and a 12-city yearly goal.
-- [x] Persist goals, rankings, Want to Visit and personalised lists in Supabase so clean devices receive them.
-- [ ] Confirm account deletion is available at Profile → Account & Privacy → Delete Account.
-- [ ] Confirm data export is available at Profile → Account & Privacy → Download My Data.
-- [x] Connect and verify the production Supabase project.
-- [x] Apply all database migrations and verify account access through Row Level Security.
-- [ ] Deploy the authenticated `delete-account` Edge Function.
-- [ ] Configure Supabase email verification templates and sender details.
-- [ ] Add production and native-app authentication redirect URLs.
-- [ ] Test forgotten-password and password-recovery redirects on a physical iPhone.
-- [ ] Complete App Store privacy disclosures for email, user content, identifiers and product interaction as actually collected.
-- [ ] Record accessibility support accurately in App Store Connect.
-- [ ] Add permission usage descriptions only for capabilities the final native app requests.
-- [x] Test review-account sign-in and pre-populated data in a clean browser session at iPhone 17 Pro Max dimensions.
-- [x] Test responsive layout, navigation and cloud data at iPad Air 11-inch dimensions.
-- [ ] Build/archive version 1.0 (5) in Xcode and test it on a physical iPhone and iPad simulator.
-- [ ] Test password recovery, export and deletion on a separate non-review test account. Do not delete the only review account.
+- [x] Email/password accounts use the production Supabase project.
+- [x] Visits, ratings, notes, Want to Visit, personal lists, ranking order, profile details and yearly goals persist per account.
+- [x] A dedicated, email-confirmed App Review account can be seeded without MFA or inbox access.
+- [x] The review seed contains 10 visits across six continents, varied ratings and dates, optional ratings, visit types and notes.
+- [x] The review seed contains five Want to Visit cities, two personal lists, a custom 10-city ranking and a 12-city yearly goal.
+- [x] Account data export is available at **Profile → Account & Privacy → Download My Data**.
+- [x] Account deletion is available at **Profile → Account & Privacy → Delete Account**.
+- [x] Authenticated account- and visit-deletion Edge Functions are deployed.
+- [x] Production email verification and password recovery use the verified CityLogger SMTP sender.
+- [x] Production web and `citylogger://auth` native redirect URLs are configured.
+- [x] A public support page is implemented at `https://citylogger.app/support`.
+- [x] Privacy Policy and Terms are linked inside the app and contain no release placeholders.
+- [x] Native links to Support, Privacy and Terms open their public `citylogger.app` pages.
+- [x] iOS scene lifecycle configuration is included for current iOS SDKs, including deep-link forwarding.
+- [x] The iOS project declares that it does not use non-exempt encryption.
+- [x] Automated tests, TypeScript validation and the web/mobile production builds pass.
 
-## App Store Connect changes — complete manually
+## Complete manually before resubmission
 
-For CityLog 1.0, open **App Review Information** and:
+- [ ] Route `support@citylogger.app` to a monitored inbox and send a two-way test message.
+- [ ] Publish the latest website version and confirm `/support`, `/privacy` and `/terms` work without signing in.
+- [ ] Run `pnpm review:verify` with the private review credentials immediately before submission.
+- [ ] Test the review account on a clean install of the exact replacement build on iPhone and iPad.
+- [ ] Test password recovery, data export and account deletion using a disposable non-review account.
+- [ ] Archive and upload build **1.0 (5)** or later from Xcode; never reuse reviewed build 1.0 (4).
+- [ ] In Xcode Organizer, inspect the generated privacy report and resolve any warnings.
+- [ ] Confirm the final archive contains no development server URL and connects to production Supabase.
 
-- Enable the option indicating that sign-in is required.
-- Enter the review email shown in the private release handoff.
-- Enter the review password shown in the private release handoff. Do not commit it to GitHub.
-- Paste the review notes below.
-- Save the version metadata. Keep the credentials unchanged until review is complete.
+## App Store Connect — required metadata corrections
 
-No Apple account changes were made by Codex.
+### App Review Information
 
-## Paste-ready review notes
+- [ ] Enable **Sign-in required**.
+- [ ] Enter the dedicated review-account email in **User name**.
+- [ ] Enter its unchanged password in **Password**. Never put the password in source control or Review Notes.
+- [ ] Paste the review notes below.
 
-CityLog uses an optional private account for saving and syncing travel data. A dedicated, email-confirmed review account is provided in App Review Information. It does not use MFA, one-time codes, or require access to an email inbox.
+### Age Rating
 
-To review the pre-populated content: launch the app, tap **Profile** in the bottom bar, tap **Create account or sign in**, then **I already have an account**, and enter the supplied credentials. After sign-in:
+- [ ] Open **App Information → Age Rating**.
+- [ ] Set **Age Assurance** to **None**.
+- [ ] Set **Parental Controls** to **None** unless those controls are actually added later.
+- [ ] Save and confirm that the answers accurately describe the submitted binary.
+
+### URLs and privacy
+
+- [ ] Replace the previous **Support URL** with `https://citylogger.app/support`.
+- [ ] Set **Privacy Policy URL** to `https://citylogger.app/privacy`.
+- [ ] Complete and publish App Privacy answers for data used by CityLogger and its providers.
+- [ ] The expected disclosures include email address, user ID, optional name, private user content and service/security diagnostics; all are used for app functionality or security and are not used for tracking.
+- [ ] Record accessibility support accurately; do not claim features that have not been tested.
+- [ ] Complete export-compliance questions consistently with `ITSAppUsesNonExemptEncryption = false` and standard HTTPS/TLS use.
+
+## Paste-ready App Review notes
+
+CityLogger uses an optional private account to save and synchronise travel data. A dedicated, email-confirmed review account is provided in the User name and Password fields above. It does not use MFA, one-time codes or require access to an email inbox.
+
+To sign in: launch the app, tap **Profile** in the bottom bar, tap **Create account or sign in**, choose **I already have an account**, then enter the supplied credentials.
+
+After sign-in:
 
 - **Map** shows 10 rated visited-city markers and 5 smaller purple Want to Visit markers.
-- **Rankings** contains a manually ordered 10-city ranking; use the up/down controls to change the order on iPhone or iPad.
-- **Log** contains visits from 2021–2026. Tap Lisbon or Kyoto to view full category ratings, dates, visit type and note.
-- **Lists** contains Want to Visit, Best food cities and Most underrated. Compare Cities is at the bottom of this section.
-- **Profile** shows 3 of 12 cities completed for the 2026 goal, plus data export and account deletion.
+- **Rankings** contains a manually ordered 10-city ranking; use the ordering controls to change it.
+- **Log** contains visits across multiple years. Tap a city to see its category ratings, dates, visit type and note.
+- **Lists** contains Want to Visit, Best food cities and Most underrated. Compare Cities is available in this section.
+- **Profile** shows yearly-goal progress plus data export and account deletion.
 
-All saved content is private to this account. Please do not test account deletion using this sole review account; the deletion control is visible in Profile under Account & Privacy.
+All saved content is private to the review account. Please do not delete the supplied review account; the deletion control can be inspected in **Profile → Account & Privacy**. Product support is available at `https://citylogger.app/support`.
 
-## General review notes
+## Final reply to Apple
 
-- Explain that an account is optional for browsing but required to save and sync a private travel history.
-- State that CityLogger contains no public profiles or public user-generated content in this release.
-- Give App Review the test account credentials. No email verification step is required for this pre-confirmed account.
+Use the response in [`docs/app-review-response.md`](app-review-response.md) only after every relevant manual checkbox above is complete.

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "../src/frontend/styles.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://citylogger.app"),
   title: "CityLogger — Your world, ranked",
   description: "Log, rate and remember every city you visit."
 };
