@@ -1,5 +1,5 @@
 import vinext from "vinext";
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import hostingConfig from "./.openai/hosting.json";
 import { sites } from "./build/sites-vite-plugin";
 
@@ -36,6 +36,8 @@ const localBindingConfig = {
 export default defineConfig(async ({ mode }) => {
   if (mode === "test") return { plugins: [] };
 
+  const env = loadEnv(mode, process.cwd(), "");
+
   process.env.WRANGLER_WRITE_LOGS ??= "false";
   process.env.WRANGLER_LOG_PATH ??= ".wrangler/logs";
   process.env.MINIFLARE_REGISTRY_PATH ??= ".wrangler/registry";
@@ -43,6 +45,13 @@ export default defineConfig(async ({ mode }) => {
   const { cloudflare } = await import("@cloudflare/vite-plugin");
 
   return {
+    define: {
+      "process.env.NEXT_PUBLIC_SUPABASE_URL": JSON.stringify(env.NEXT_PUBLIC_SUPABASE_URL),
+      "process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY": JSON.stringify(
+        env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+      ),
+      "process.env.NEXT_PUBLIC_APP_URL": JSON.stringify(env.NEXT_PUBLIC_APP_URL),
+    },
     plugins: [
       vinext(),
       sites(),
