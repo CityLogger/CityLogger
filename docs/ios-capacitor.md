@@ -1,6 +1,6 @@
-# CityLogger iOS handoff
+# CityLog iOS handoff
 
-CityLogger uses Capacitor to package the shared React interface as a native iOS
+CityLog uses Capacitor to package the shared React interface as a native iOS
 application. The hosted Vinext build is unchanged.
 
 ## What is committed

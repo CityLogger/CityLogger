@@ -3,7 +3,7 @@ import { supabase } from "./supabase";
 import { BackendError } from "./errors";
 
 export function getBackendClient(): SupabaseClient {
-  if (!supabase) throw new BackendError("NOT_CONFIGURED", "CityLogger cloud storage is not configured.");
+  if (!supabase) throw new BackendError("NOT_CONFIGURED", "CityLog cloud storage is not configured.");
   return supabase;
 }
 

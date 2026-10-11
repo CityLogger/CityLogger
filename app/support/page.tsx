@@ -1,30 +1,30 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Support | CityLogger",
-  description: "Get help with CityLogger accounts, travel logs, privacy and data requests."
+  title: "Support | CityLog",
+  description: "Get help with CityLog accounts, travel logs, privacy and data requests."
 };
 
 const supportEmail = "support@citylogger.app";
 
 export default function Support() {
   return <main className="legal-page support-page">
-    <nav className="legal-nav" aria-label="CityLogger support navigation">
-      <a href="/">CityLogger</a><span aria-hidden="true">·</span>
+    <nav className="legal-nav" aria-label="CityLog support navigation">
+      <a href="/">CityLog</a><span aria-hidden="true">·</span>
       <a href="/privacy">Privacy</a><span aria-hidden="true">·</span>
       <a href="/terms">Terms</a>
     </nav>
 
-    <p className="kicker">CITYLOGGER SUPPORT</p>
+    <p className="kicker">CITYLOG SUPPORT</p>
     <h1>How can we help?</h1>
-    <p className="legal-summary">Find quick answers below or email us for help with your account, saved travel data or the CityLogger app.</p>
+    <p className="legal-summary">Find quick answers below or email us for help with your account, saved travel data or the CityLog app.</p>
 
     <section className="support-contact" aria-labelledby="contact-support">
       <div>
         <p className="kicker">CONTACT SUPPORT</p>
-        <h2 id="contact-support">Email the CityLogger team</h2>
+        <h2 id="contact-support">Email the CityLog team</h2>
       </div>
-      <a className="support-email" href={`mailto:${supportEmail}?subject=CityLogger%20support%20request`}>{supportEmail}</a>
+      <a className="support-email" href={`mailto:${supportEmail}?subject=CityLog%20support%20request`}>{supportEmail}</a>
     </section>
 
     <div className="support-grid">
@@ -35,6 +35,7 @@ export default function Support() {
       <section className="support-card">
         <h2>Saved travel data</h2>
         <p>After signing in, visits, rankings, lists, Want to Visit entries and your yearly goal synchronise with your account. If something appears missing, confirm you are using the same email address and reopen the app while online.</p>
+        <p>Guest entries stay on the device where you recorded them. After signing in on that device, choose <strong>Save it to my account</strong> to transfer them. In a City Story, use <strong>Log another visit</strong> to keep a separate record without replacing earlier memories.</p>
       </section>
       <section className="support-card">
         <h2>Export or delete</h2>
@@ -42,11 +43,11 @@ export default function Support() {
       </section>
       <section className="support-card">
         <h2>Report a problem</h2>
-        <p>Tell us your device model, operating-system version, CityLogger app version, what you expected and what happened. Screenshots are helpful, but never send your password or authentication codes.</p>
+        <p>Tell us your device model, operating-system version, CityLog app version, what you expected and what happened. Screenshots are helpful, but never send your password or authentication codes.</p>
       </section>
     </div>
 
     <h2>Privacy requests</h2>
-    <p>For access, correction, deletion or other privacy requests, email <a href={`mailto:${supportEmail}?subject=CityLogger%20privacy%20request`}>{supportEmail}</a>. Read the <a href="/privacy">Privacy Policy</a> for details about information handling and your choices.</p>
+    <p>For access, correction, deletion or other privacy requests, email <a href={`mailto:${supportEmail}?subject=CityLog%20privacy%20request`}>{supportEmail}</a>. Read the <a href="/privacy">Privacy Policy</a> for details about information handling and your choices.</p>
   </main>;
 }

@@ -1,6 +1,6 @@
-# CityLogger
+# CityLog
 
-CityLogger is a private travel journal for logging, rating, mapping and ranking cities.
+CityLog is a private travel journal for logging, rating, mapping and ranking cities.
 
 ## Project layout
 

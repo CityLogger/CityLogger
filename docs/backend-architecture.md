@@ -1,4 +1,4 @@
-# CityLogger backend architecture
+# CityLog backend architecture
 
 ## Principles
 

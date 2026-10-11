@@ -4,14 +4,16 @@ import { App } from "@capacitor/app";
 import CityLogger from "../../src/frontend/CityLogger";
 import { supabase } from "../../src/backend/supabase";
 import "../../src/frontend/styles.css";
+import "../../src/frontend/experience.css";
 import "./native.css";
+import "../../src/frontend/modern.css";
 
 document.documentElement.classList.add("native-app");
 
 const root = document.getElementById("root");
 
 if (!root) {
-  throw new Error("CityLogger could not find its mobile root element.");
+  throw new Error("CityLog could not find its mobile root element.");
 }
 
 createRoot(root).render(

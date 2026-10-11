@@ -1,4 +1,4 @@
-# CityLogger App Store resubmission checklist
+# CityLog App Store resubmission checklist
 
 Last code review: 4 October 2026. This checklist supports preparation but does not guarantee approval.
 
@@ -12,7 +12,7 @@ Last code review: 4 October 2026. This checklist supports preparation but does n
 - [x] Account data export is available at **Profile → Account & Privacy → Download My Data**.
 - [x] Account deletion is available at **Profile → Account & Privacy → Delete Account**.
 - [x] Authenticated account- and visit-deletion Edge Functions are deployed.
-- [x] Production email verification and password recovery use the verified CityLogger SMTP sender.
+- [x] Production email verification and password recovery use the verified CityLog SMTP sender.
 - [x] Production web and `citylogger://auth` native redirect URLs are configured.
 - [x] A public support page is implemented at `https://citylogger.app/support`.
 - [x] Privacy Policy and Terms are linked inside the app and contain no release placeholders.
@@ -52,14 +52,14 @@ Last code review: 4 October 2026. This checklist supports preparation but does n
 
 - [ ] Replace the previous **Support URL** with `https://citylogger.app/support`.
 - [ ] Set **Privacy Policy URL** to `https://citylogger.app/privacy`.
-- [ ] Complete and publish App Privacy answers for data used by CityLogger and its providers.
+- [ ] Complete and publish App Privacy answers for data used by CityLog and its providers.
 - [ ] The expected disclosures include email address, user ID, optional name, private user content and service/security diagnostics; all are used for app functionality or security and are not used for tracking.
 - [ ] Record accessibility support accurately; do not claim features that have not been tested.
 - [ ] Complete export-compliance questions consistently with `ITSAppUsesNonExemptEncryption = false` and standard HTTPS/TLS use.
 
 ## Paste-ready App Review notes
 
-CityLogger uses an optional private account to save and synchronise travel data. A dedicated, email-confirmed review account is provided in the User name and Password fields above. It does not use MFA, one-time codes or require access to an email inbox.
+CityLog uses an optional private account to save and synchronise travel data. A dedicated, email-confirmed review account is provided in the User name and Password fields above. It does not use MFA, one-time codes or require access to an email inbox.
 
 To sign in: launch the app, tap **Profile** in the bottom bar, tap **Create account or sign in**, choose **I already have an account**, then enter the supplied credentials.
 

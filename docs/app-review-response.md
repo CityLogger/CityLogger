@@ -1,4 +1,4 @@
-# CityLogger response to App Review
+# CityLog response to App Review
 
 Send this only after the new build and metadata are saved in App Store Connect. Replace the bracketed build number if necessary; do not paste credentials into the message because they belong in the private App Review Information fields.
 
@@ -16,7 +16,7 @@ To sign in, open **Profile → Create account or sign in → I already have an a
 
 **Guideline 2.3.6 — Accurate Age Rating metadata**
 
-CityLogger does not provide Parental Controls or Age Assurance. We corrected the Age Rating questionnaire and set Age Assurance and Parental Controls to **None**.
+CityLog does not provide Parental Controls or Age Assurance. We corrected the Age Rating questionnaire and set Age Assurance and Parental Controls to **None**.
 
 **Guideline 1.5 — Support URL**
 

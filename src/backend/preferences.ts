@@ -113,12 +113,12 @@ export async function removeWishlistCity(city: Pick<StoredWishlistCity, "id" | "
   if (error) throw normaliseBackendError(error, "Could not remove this city from Want to Visit.");
 }
 
-export async function createPersonalList(title: string, position: number): Promise<StoredPersonalList> {
+export async function createPersonalList(title: string, position: number, id = crypto.randomUUID()): Promise<StoredPersonalList> {
   const cleanTitle = title.trim();
   if (!cleanTitle || cleanTitle.length > 100) throw new BackendError("VALIDATION", "List titles must be between 1 and 100 characters.");
   const client = getBackendClient();
   const user = await requireCurrentUser();
-  const { data, error } = await client.from("personal_lists").insert({ user_id: user.id, title: cleanTitle, position }).select("id, title").single();
+  const { data, error } = await client.from("personal_lists").upsert({ id, user_id: user.id, title: cleanTitle, position }, { onConflict: "id" }).select("id, title").single();
   if (error) throw normaliseBackendError(error, "Could not create this list.");
   return { id: data.id, title: data.title, cityIds: [] };
 }

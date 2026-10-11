@@ -13,6 +13,8 @@ import {
   updateVisit, type StoredCity
 } from "../backend/index";
 import { authRedirectUrl, isSupabaseConfigured, supabase } from "../backend/supabase";
+import Onboarding, { type EntryStage } from "./Onboarding";
+import { cityIdentity, latestCities, visitHistory, GUEST_KEY, ONBOARDING_KEY } from "./journey";
 
 type RatingKey = "personal" | "culture" | "architecture" | "food" | "nature" | "nightlife";
 type Ratings = Record<RatingKey, number | null>;
@@ -21,7 +23,7 @@ type CityId = number | string;
 type City = {
   id: CityId; name: string; country: string; continent: string; lat: number; lng: number;
   rating: number; ratings: Ratings; dateFrom: string; dateTo: string;
-  visitType: string; note: string; emoji: string;
+  visitType: string; note: string; emoji: string; photoUrl?: string;
 };
 
 type CityOption = {
@@ -31,15 +33,6 @@ type CityOption = {
 };
 
 type PersonalList = { id: CityId; title: string; cityIds: CityId[] };
-
-const starterCities: City[] = [
-  { id: 1, name: "Lisbon", country: "Portugal", continent: "Europe", lat: 38.72, lng: -9.14, rating: 4.7, ratings: { personal: 5, culture: 4.5, architecture: 4.5, food: 5, nature: 4, nightlife: 5 }, dateFrom: "2025-05-09", dateTo: "2025-05-15", visitType: "Holiday", note: "Golden evenings, tiled streets and the best small plates.", emoji: "🇵🇹" },
-  { id: 2, name: "Kyoto", country: "Japan", continent: "Asia", lat: 35.01, lng: 135.77, rating: 4.7, ratings: { personal: 5, culture: 5, architecture: 5, food: 4.5, nature: 4, nightlife: null }, dateFrom: "2024-10-12", dateTo: "2024-10-19", visitType: "Holiday", note: "Quiet gardens before breakfast. A city that rewards slowing down.", emoji: "🇯🇵" },
-  { id: 3, name: "Cape Town", country: "South Africa", continent: "Africa", lat: -33.93, lng: 18.42, rating: 4.4, ratings: { personal: 4.5, culture: 4, architecture: 4, food: 4.5, nature: 5, nightlife: 4.5 }, dateFrom: "2025-02-03", dateTo: "2025-02-12", visitType: "Holiday", note: "Mountains, ocean and long lunches.", emoji: "🇿🇦" },
-  { id: 4, name: "New York", country: "United States", continent: "North America", lat: 40.71, lng: -74.01, rating: 4.3, ratings: { personal: 4.5, culture: 5, architecture: 4.5, food: 4.5, nature: 3, nightlife: 4.5 }, dateFrom: "2023-09-18", dateTo: "2023-09-25", visitType: "City break", note: "Endless energy. Walked everywhere.", emoji: "🇺🇸" },
-  { id: 5, name: "Marrakech", country: "Morocco", continent: "Africa", lat: 31.63, lng: -8.0, rating: 3.6, ratings: { personal: 3.5, culture: 4, architecture: 4.5, food: 4, nature: 3, nightlife: 2.5 }, dateFrom: "2024-03-06", dateTo: "2024-03-10", visitType: "City break", note: "Intense, colourful and unforgettable.", emoji: "🇲🇦" },
-  { id: 6, name: "Reykjavík", country: "Iceland", continent: "Europe", lat: 64.15, lng: -21.94, rating: 4.1, ratings: { personal: 4, culture: 3.5, architecture: 3.5, food: 3.5, nature: 5, nightlife: null }, dateFrom: "2023-01-14", dateTo: "2023-01-19", visitType: "Road trip", note: "Small city, enormous landscapes.", emoji: "🇮🇸" }
-];
 
 const suggestions: CityOption[] = [
   { name: "Barcelona", country: "Spain", continent: "Europe", lat: 41.39, lng: 2.17, emoji: "🇪🇸" },
@@ -71,6 +64,7 @@ const formatVisitDate = (from: string, to: string) => {
   return `${start} – ${formatter.format(new Date(`${to}T12:00:00`))}`;
 };
 const normalizeSearch = (value: string) => value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+const escapeMapText = (value: string) => value.replace(/[&<>"']/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[char]!));
 const countryFlag = (code: string) => code.length === 2
   ? String.fromCodePoint(...code.toUpperCase().split("").map(char => 127397 + char.charCodeAt(0)))
   : "🌍";
@@ -140,8 +134,8 @@ function InteractiveMap({
       if (cancelled || !mapElement.current) return;
 
       const map = L.map(mapElement.current, {
-        center: [22, 8],
-        zoom: 2,
+        center: selected ? [selected.lat, selected.lng] : [22, 8],
+        zoom: selected ? 6 : 2,
         minZoom: 2,
         maxZoom: 18,
         zoomControl: false,
@@ -175,12 +169,14 @@ function InteractiveMap({
 
   useEffect(() => {
     let cancelled = false;
+    let retry: ReturnType<typeof setTimeout>;
 
     async function drawMarkers() {
+      if (cancelled) return;
       const map = mapInstance.current;
       const layer = markerLayer.current;
       if (!map || !layer) {
-        window.setTimeout(drawMarkers, 40);
+        retry = setTimeout(drawMarkers, 40);
         return;
       }
 
@@ -195,7 +191,7 @@ function InteractiveMap({
         const icon = L.divIcon({
           className: "city-div-icon",
           html: `<div class="city-map-marker${isSelected ? " is-selected" : ""}" style="--marker-color:${colorForScore(displayScore)}">
-            <span class="city-marker-label">${city.name}</span>
+            <span class="city-marker-label">${escapeMapText(city.name)}</span>
           </div>`,
           iconSize: [38, 38],
           iconAnchor: [19, 19]
@@ -208,7 +204,7 @@ function InteractiveMap({
         }).addTo(layer);
 
         marker.bindTooltip(
-          `<strong>${city.name}</strong><br>${city.country} · ${displayScore.toFixed(1)}/5 ${scoreCategory.toLowerCase()}`,
+          `<strong>${escapeMapText(city.name)}</strong><br>${escapeMapText(city.country)} · ${displayScore.toFixed(1)}/5 ${scoreCategory.toLowerCase()}`,
           { direction: "top", offset: [0, -18], className: "city-tooltip" }
         );
         marker.on("click", () => {
@@ -220,18 +216,18 @@ function InteractiveMap({
       wishlist.forEach(city => {
         const icon = L.divIcon({
           className: "city-div-icon",
-          html: `<div class="city-map-marker wishlist-marker"><span class="city-marker-label">${city.name} · Want to visit</span></div>`,
+          html: `<div class="city-map-marker wishlist-marker"><span class="city-marker-label">${escapeMapText(city.name)} · Want to visit</span></div>`,
           iconSize: [26, 26],
           iconAnchor: [13, 13]
         });
         L.marker([city.lat, city.lng], { icon, title: `${city.name} · Want to visit`, riseOnHover: true })
-          .bindTooltip(`<strong>${city.name}</strong><br>${city.country} · Want to visit`, { direction: "top", offset: [0, -13], className: "city-tooltip" })
+          .bindTooltip(`<strong>${escapeMapText(city.name)}</strong><br>${escapeMapText(city.country)} · Want to visit`, { direction: "top", offset: [0, -13], className: "city-tooltip" })
           .addTo(layer);
       });
     }
 
     drawMarkers();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; clearTimeout(retry); };
   }, [cities, wishlist, selected, onSelect, scoreCategory]);
 
   useEffect(() => () => {
@@ -244,8 +240,19 @@ function InteractiveMap({
 
 export default function CityLogger({ nativeMode = false }: { nativeMode?: boolean }) {
   const [tab, setTab] = useState<"map" | "rankings" | "log" | "compare" | "lists" | "profile" | "city">("map");
-  const [cities, setCities] = useState(starterCities);
-  const [selected, setSelected] = useState<City | null>(nativeMode ? null : starterCities[0]);
+  const [cities, setCities] = useState<City[]>([]);
+  const [selected, setSelected] = useState<City | null>(null);
+  const [entryStage, setEntryStage] = useState<EntryStage>("loading");
+  const [onboardingNotice, setOnboardingNotice] = useState("");
+  const [guestReady, setGuestReady] = useState(false);
+  const [guestImportAvailable, setGuestImportAvailable] = useState(false);
+  const [saveBusy, setSaveBusy] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [guestStorageError, setGuestStorageError] = useState("");
+  const signupPending = useRef(false);
+  const entryInitialised = useRef(false);
+  const savingVisit = useRef(false);
+  const visitOperationId = useRef<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [editingVisitId, setEditingVisitId] = useState<string | null>(null);
   const [editorReturnTab, setEditorReturnTab] = useState<"map" | "city">("map");
@@ -254,23 +261,18 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
   const [searchResults, setSearchResults] = useState<CityOption[]>(suggestions);
   const [searching, setSearching] = useState(false);
   const [ratings, setRatings] = useState<Ratings>({ personal: 4, culture: 4, architecture: 4, food: 4, nature: null, nightlife: null });
-  const [dateFrom, setDateFrom] = useState("2026-07-01");
-  const [dateTo, setDateTo] = useState("2026-07-05");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [visitType, setVisitType] = useState("");
   const [note, setNote] = useState("");
   const [category, setCategory] = useState("Overall");
   const [filterOpen, setFilterOpen] = useState(false);
   const [continent, setContinent] = useState("All");
-  const [wishlist, setWishlist] = useState<CityOption[]>([
-    { name: "Mexico City", country: "Mexico", continent: "North America", lat: 19.43, lng: -99.13, emoji: "🇲🇽" },
-    { name: "Hanoi", country: "Vietnam", continent: "Asia", lat: 21.03, lng: 105.85, emoji: "🇻🇳" }
-  ]);
+  const [wishlist, setWishlist] = useState<CityOption[]>([]);
   const [manualOrder, setManualOrder] = useState<CityId[] | null>(null);
   const [draggedCity, setDraggedCity] = useState<CityId | null>(null);
-  const [compareIds, setCompareIds] = useState<[CityId, CityId]>([starterCities[0].id, starterCities[1].id]);
-  const [lists, setLists] = useState<PersonalList[]>([
-    { id: 1, title: "Most underrated", cityIds: [starterCities[0].id, starterCities[4].id, starterCities[2].id] }
-  ]);
+  const [compareIds, setCompareIds] = useState<[CityId, CityId]>(["", ""]);
+  const [lists, setLists] = useState<PersonalList[]>([]);
   const [newListTitle, setNewListTitle] = useState("");
   const [yearlyGoal, setYearlyGoal] = useState(10);
   const [goalDraft, setGoalDraft] = useState("10");
@@ -284,16 +286,19 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
   const [authName, setAuthName] = useState("");
   const [authMessage, setAuthMessage] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
-  const [profileName, setProfileName] = useState("Alex Morgan");
+  const [profileName, setProfileName] = useState("Your travel journal");
   const [syncStatus, setSyncStatus] = useState<"idle" | "loading" | "saved" | "error">("idle");
   const syncRequest = useRef(0);
   const publicPageUrl = (path: string) => nativeMode ? `https://citylogger.app${path}` : path;
+  const citySummaries = useMemo(() => latestCities(cities), [cities]);
+  const storyHistory = useMemo(() => selected ? visitHistory(cities, selected) : [], [cities, selected]);
+  const currentCity = storyHistory[0] || selected;
 
   const filtered = useMemo(() =>
-    cities.filter(city =>
+    citySummaries.filter(city =>
       (continent === "All" || city.continent === continent) &&
       scoreFor(city, category) !== null
-    ), [cities, continent, category]);
+    ), [citySummaries, continent, category]);
 
   const ranked = useMemo(() => [...filtered].sort((a, b) =>
     (scoreFor(b, category) || 0) - (scoreFor(a, category) || 0) ||
@@ -304,22 +309,89 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
   const displayedRanked = useMemo(() => {
     if (!manualOrder) return ranked;
     const positions = new Map(manualOrder.map((id, index) => [id, index]));
-    return [...ranked].sort((a, b) => (positions.get(a.id) ?? 999) - (positions.get(b.id) ?? 999));
-  }, [ranked, manualOrder]);
-  const compared = compareIds.map(id => cities.find(city => String(city.id) === String(id)) || cities[0]).filter(Boolean);
+    const position = (city: City) => Math.min(...visitHistory(cities, city).map(visit => positions.get(visit.id) ?? 999));
+    return [...ranked].sort((a, b) => position(a) - position(b));
+  }, [ranked, manualOrder, cities]);
+  const compared = compareIds.map((id,index) => citySummaries.find(city => String(city.id) === String(id)) || citySummaries[index] || citySummaries[0]).filter(Boolean);
   const draftOverall = calculateOverall(ratings);
   const requiredRatingsComplete = requiredRatingKeys.every(key => ratings[key] !== null && (ratings[key] || 0) > 0);
   const currentYear = new Date().getFullYear();
-  const citiesThisYear = cities.filter(city => city.dateFrom.startsWith(`${currentYear}-`)).length;
+  const citiesThisYear = new Set(cities.filter(city => city.dateFrom.startsWith(`${currentYear}-`)).map(cityIdentity)).size;
   const goalProgress = Math.min(100, Math.round((citiesThisYear / yearlyGoal) * 100));
 
   useEffect(() => {
-    const savedGoal = Number(window.localStorage.getItem("citylogger-yearly-goal-v2"));
-    if (Number.isInteger(savedGoal) && savedGoal >= 1 && savedGoal <= 999) {
-      setYearlyGoal(savedGoal);
-      setGoalDraft(String(savedGoal));
+    if (nativeMode) window.scrollTo({ top: 0, behavior: "instant" });
+  }, [tab, nativeMode]);
+
+  function restoreGuest() {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(GUEST_KEY) || "null");
+      setCities(Array.isArray(saved?.cities) ? saved.cities : []);
+      setWishlist(Array.isArray(saved?.wishlist) ? saved.wishlist : []);
+      setLists(Array.isArray(saved?.lists) ? saved.lists : []);
+      setManualOrder(Array.isArray(saved?.manualOrder) ? saved.manualOrder : null);
+      const goal = Math.max(1, Math.min(999, Number(saved?.yearlyGoal ?? localStorage.getItem("citylogger-yearly-goal-v2")) || 10));
+      setYearlyGoal(goal); setGoalDraft(String(goal));
+    } catch { setCities([]); setWishlist([]); setLists([]); setManualOrder(null); }
+    setSelected(null);
+    setProfileName("Your travel journal");
+    setGuestReady(true);
+  }
+
+  useEffect(() => {
+    if (!authReady || entryInitialised.current) return;
+    entryInitialised.current = true;
+    if (!user) restoreGuest();
+    let complete = false;
+    try { complete = window.localStorage.getItem(ONBOARDING_KEY) === "complete"; } catch { /* Storage can be unavailable in private browsing. */ }
+    setEntryStage(user || complete ? "done" : "welcome");
+  }, [authReady, user]);
+
+  useEffect(() => {
+    if (user) {
+      if (!signupPending.current) setEntryStage("done");
+      try { const guest = JSON.parse(localStorage.getItem(GUEST_KEY) || "null"); setGuestImportAvailable(Boolean(guest?.cities?.length || guest?.wishlist?.length || guest?.lists?.length)); } catch { setGuestImportAvailable(false); }
     }
-  }, []);
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!guestReady || !authReady || user) return;
+    try { localStorage.setItem(GUEST_KEY, JSON.stringify({cities,wishlist,lists,manualOrder,yearlyGoal})); setGuestStorageError(""); }
+    catch { setGuestStorageError("Your device could not save this journal. Keep this window open and free up storage before trying again."); setSyncStatus("error"); }
+  }, [cities,wishlist,lists,manualOrder,yearlyGoal,guestReady,authReady,user]);
+
+  function finishOnboarding() {
+    try { localStorage.setItem(ONBOARDING_KEY,"complete"); } catch { /* The session still works without browser storage. */ }
+    signupPending.current = false;
+    setEntryStage("done"); setTab("map");
+  }
+
+  function enterGuest() {
+    try { if (localStorage.getItem(ONBOARDING_KEY) === "complete") { finishOnboarding(); return; } } catch { /* Continue without persistent preferences. */ }
+    setEntryStage("cards");
+  }
+
+  async function importGuestJournal() {
+    if (!user || saveBusy) return;
+    setSaveBusy(true); setSyncStatus("loading"); setSaveError("");
+    try {
+      const guest = JSON.parse(localStorage.getItem(GUEST_KEY) || "null") as {cities: City[];wishlist: CityOption[];lists: PersonalList[];manualOrder: CityId[] | null;yearlyGoal: number} | null;
+      if (!guest) return;
+      for (const visit of guest.cities || []) await createVisit(visit as StoredCity, String(visit.id));
+      for (const city of guest.wishlist || []) await addWishlistCity(city);
+      for (const [index,list] of (guest.lists || []).entries()) {
+        await createPersonalList(list.title, lists.length + index, String(list.id));
+        await savePersonalListCities(String(list.id), list.cityIds.map(String));
+      }
+      if (guest.manualOrder?.length && !manualOrder) await saveRankingOrder(guest.manualOrder.map(String));
+      if (!cities.length) await saveStoredYearlyGoal(guest.yearlyGoal || 10);
+      const [stored,state]=await Promise.all([loadVisits(),loadAppState()]);
+      setCities(stored);setWishlist(state.wishlist);setLists(state.lists);setManualOrder(state.rankingOrder.length?state.rankingOrder:null);setYearlyGoal(state.yearlyGoal);setGoalDraft(String(state.yearlyGoal));
+      localStorage.removeItem(GUEST_KEY);
+      setGuestImportAvailable(false);setSyncStatus("saved");
+    } catch (error) { setSaveError(error instanceof Error?error.message:"Could not import. Your guest journal is still on this device; you can retry.");setSyncStatus("error"); }
+    finally {setSaveBusy(false);}
+  }
 
   useEffect(() => {
     if (!supabase) {
@@ -334,7 +406,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
         setAuthView("reset");
         setAuthOpen(true);
       }
-    });
+    }).catch(() => { setAuthReady(true); setAuthMessage("We couldn’t restore your session. Please sign in again."); });
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user || null);
       if (event === "PASSWORD_RECOVERY") {
@@ -342,17 +414,10 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
         setAuthOpen(true);
       }
       if (event === "SIGNED_OUT") {
-        setCities(starterCities);
-        setSelected(starterCities[0]);
-        setWishlist([
-          { name: "Mexico City", country: "Mexico", continent: "North America", lat: 19.43, lng: -99.13, emoji: "🇲🇽" },
-          { name: "Hanoi", country: "Vietnam", continent: "Asia", lat: 21.03, lng: 105.85, emoji: "🇻🇳" }
-        ]);
-        setLists([{ id: 1, title: "Most underrated", cityIds: [starterCities[0].id, starterCities[4].id, starterCities[2].id] }]);
-        setManualOrder(null);
-        setYearlyGoal(10);
-        setGoalDraft("10");
-        setProfileName("Alex Morgan");
+        ++syncRequest.current;
+        restoreGuest();
+        setTab("map");
+        setEntryStage("welcome");
       }
     });
     return () => listener.subscription.unsubscribe();
@@ -360,6 +425,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
 
   useEffect(() => {
     if (!user) return;
+    setCities([]); setSelected(null); setWishlist([]); setLists([]); setManualOrder(null);
     let active = true;
     const refresh = async () => {
       const requestId = ++syncRequest.current;
@@ -368,7 +434,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
         const [stored, appState] = await Promise.all([loadVisits(), loadAppState()]);
         if (!active || requestId !== syncRequest.current) return;
         setCities(stored);
-        setSelected(stored[0] || null);
+        setSelected(current => current ? stored.find(city => city.id === current.id) || null : null);
         setWishlist(appState.wishlist);
         setLists(appState.lists);
         setManualOrder(appState.rankingOrder.length ? appState.rankingOrder : null);
@@ -386,7 +452,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
     const onVisible = () => { if (document.visibilityState === "visible") refresh(); };
     document.addEventListener("visibilitychange", onVisible);
     return () => { active = false; document.removeEventListener("visibilitychange", onVisible); };
-  }, [user]);
+  }, [user?.id]);
 
   useEffect(() => {
     const needle = normalizeSearch(query.trim());
@@ -437,18 +503,22 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
     return () => controller.abort();
   }, [query]);
 
-  function beginAdd(city: CityOption) {
+  function beginAdd(city: CityOption | City) {
+    visitOperationId.current = crypto.randomUUID();
+    setSaveError("");
     setEditingVisitId(null);
-    setCandidate(city);
+    setCandidate({ ...city, id: city.id === undefined ? undefined : String(city.id) });
     setQuery(city.name);
     setRatings({ personal: 4, culture: 4, architecture: 4, food: 4, nature: null, nightlife: null });
-    setDateFrom("2026-07-01");
-    setDateTo("2026-07-05");
+    const today = new Date().toLocaleDateString("en-CA");
+    setDateFrom(today);
+    setDateTo(today);
     setVisitType("");
     setNote("");
   }
 
   function openAddCity() {
+    setSaveError("");
     setEditingVisitId(null);
     setCandidate(null);
     setQuery("");
@@ -458,13 +528,15 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
   }
 
   function closeVisitEditor() {
+    if (savingVisit.current) return;
     setAdding(false);
     setEditingVisitId(null);
   }
 
   function editSelectedVisit() {
-    if (!user || !selected || typeof selected.id !== "string") return;
-    setEditingVisitId(selected.id);
+    if (!selected) return;
+    setSaveError("");
+    setEditingVisitId(String(selected.id));
     setEditorReturnTab(tab === "city" ? "city" : "map");
     setCandidate({
       name: selected.name,
@@ -490,7 +562,6 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
     setGoalDraft(String(nextGoal));
     setEditingGoal(false);
     if (!user) {
-      window.localStorage.setItem("citylogger-yearly-goal-v2", String(nextGoal));
       return;
     }
     try {
@@ -503,13 +574,8 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
   }
 
   async function saveCity() {
-    if (!candidate || !requiredRatingsComplete || !dateFrom || !dateTo || dateTo < dateFrom) return;
-    if (!user) {
-      setAuthView("welcome");
-      setAuthMessage("Create an account or sign in to save this visit permanently.");
-      setAuthOpen(true);
-      return;
-    }
+    if (savingVisit.current || !candidate || !requiredRatingsComplete || !dateFrom || !dateTo || dateTo < dateFrom) return;
+    savingVisit.current = true; setSaveBusy(true); setSaveError("");
     const draftCity = {
       ...candidate,
       rating: draftOverall,
@@ -517,15 +583,16 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
       dateFrom,
       dateTo,
       visitType,
-      note: note || "A new city in my travel story."
+      note
     };
     setSyncStatus("loading");
     try {
-      const savedCity = editingVisitId
+      const operationId = visitOperationId.current || (visitOperationId.current = crypto.randomUUID());
+      const savedCity = !user ? { ...draftCity, id: editingVisitId || operationId } : editingVisitId
         ? await updateVisit({ ...draftCity, id: editingVisitId } as StoredCity)
-        : await createVisit(draftCity as Omit<StoredCity, "id">, crypto.randomUUID());
+        : await createVisit(draftCity as Omit<StoredCity, "id">, operationId);
       if (editingVisitId) {
-        setCities(current => current.map(city => city.id === editingVisitId ? savedCity : city));
+        setCities(current => current.map(city => String(city.id) === editingVisitId ? savedCity : city));
       } else {
         setCities(current => [savedCity, ...current]);
       }
@@ -539,13 +606,13 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
       window.setTimeout(() => setSyncStatus("idle"), 1800);
     } catch (error) {
       setSyncStatus("error");
-      setAuthMessage(error instanceof Error ? error.message : "The visit could not be saved.");
-    }
+      setSaveError(error instanceof Error ? error.message : "The visit could not be saved.");
+    } finally { savingVisit.current = false; setSaveBusy(false); }
   }
 
   async function submitAuth() {
     if (!supabase) {
-      setAuthMessage("Connect a Supabase project using the environment variables in .env.example.");
+      setAuthMessage("Account services are temporarily unavailable. You can continue as a guest and try again later.");
       return;
     }
     setAuthBusy(true);
@@ -559,17 +626,21 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
           setAuthOpen(false);
           return;
         }
+        signupPending.current = true;
         const { data, error } = await supabase.auth.signUp({
           email: authEmail,
           password: authPassword,
           options: { data: { display_name: authName }, emailRedirectTo: authRedirectUrl() }
         });
-        if (error) throw error;
-        setAuthMessage(data.session ? "Account created." : "Check your email to verify your account, then sign in.");
+        if (error) { signupPending.current = false; throw error; }
+        setOnboardingNotice(data.session ? "Your account is ready." : "Check your email to confirm your account. You can explore and save on this device while you wait.");
+        setAuthOpen(false); setEntryStage("cards");
       } else if (authView === "signin") {
+        signupPending.current = false;
         const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
         if (error) throw error;
         setAuthOpen(false);
+        setEntryStage("done");
       } else if (authView === "forgot") {
         const { error } = await supabase.auth.resetPasswordForEmail(authEmail, { redirectTo: authRedirectUrl() });
         if (error) throw error;
@@ -577,7 +648,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
       } else if (authView === "reset") {
         const { error } = await supabase.auth.updateUser({ password: authPassword });
         if (error) throw error;
-        setAuthMessage("Password updated. You can continue using CityLogger.");
+        setAuthMessage("Password updated. You can continue using CityLog.");
       }
     } catch (error) {
       setAuthMessage(error instanceof Error ? error.message : "Authentication failed.");
@@ -594,7 +665,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
       const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `citylogger-data-${new Date().toISOString().slice(0, 10)}.json`;
+      anchor.download = `citylog-data-${new Date().toISOString().slice(0, 10)}.json`;
       anchor.click();
       URL.revokeObjectURL(url);
       setSyncStatus("idle");
@@ -615,21 +686,23 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
       return;
     }
     await supabase.auth.signOut();
-    setCities(starterCities);
-    setSelected(starterCities[0]);
+    restoreGuest();
     setTab("map");
     setSyncStatus("idle");
   }
 
   async function removeSelectedVisit() {
-    if (!user || !selected || typeof selected.id !== "string") return;
-    if (!window.confirm(`Delete ${selected.name}? This cannot be undone.`)) return;
+    if (!selected) return;
+    if (!window.confirm(`Delete this visit to ${selected.name}? Other visits will be kept.`)) return;
     setSyncStatus("loading");
     try {
-      await deleteVisit(selected.id);
+      if (user) await deleteVisit(String(selected.id));
       setCities(current => current.filter(city => city.id !== selected.id));
-      setSelected(null);
-      if (tab === "city") setTab("log");
+      const remaining = storyHistory.filter(city => city.id !== selected.id);
+      setSelected(remaining[0] || null);
+      setLists(current => current.map(list => ({...list,cityIds:list.cityIds.filter(id=>id!==selected.id)})));
+      setManualOrder(current => current?.filter(id=>id!==selected.id) || null);
+      if (tab === "city" && !remaining.length) setTab("log");
       setSyncStatus("idle");
     } catch {
       setSyncStatus("error");
@@ -639,9 +712,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
   async function addWantToVisit(city: CityOption) {
     const existing = wishlist.find(item => item.name === city.name && item.country === city.country);
     if (!user) {
-      setAuthView("welcome");
-      setAuthMessage("Create an account or sign in to sync your Want to Visit list.");
-      setAuthOpen(true);
+      setWishlist(current => existing ? current.filter(item => cityIdentity(item) !== cityIdentity(city)) : [...current,{...city,id:crypto.randomUUID()}]);
       return;
     }
     setSyncStatus("loading");
@@ -691,9 +762,8 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
     const title = newListTitle.trim();
     if (!title) return;
     if (!user) {
-      setAuthView("welcome");
-      setAuthMessage("Create an account or sign in to save personalised lists.");
-      setAuthOpen(true);
+      setLists(current => [...current,{id:crypto.randomUUID(),title,cityIds:[]}]);
+      setNewListTitle("");
       return;
     }
     setSyncStatus("loading");
@@ -741,9 +811,10 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
   }
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell view-${tab} ${entryStage !== "done" ? "entry-active" : ""} ${adding ? "editor-open" : ""}`}>
+      <div className="product-layer" inert={entryStage !== "done" || authOpen || adding} aria-hidden={entryStage !== "done" || undefined}>
       <aside className="sidebar">
-        <div className="brand"><span className="brand-mark"><MapPin size={18}/></span><span>citylogger</span></div>
+        <div className="brand"><span className="brand-mark"><MapPin size={18}/></span><span>citylog</span></div>
         <nav className="desktop-nav" aria-label="Primary">
           <button className={tab === "map" ? "active" : ""} onClick={() => setTab("map")}><MapIcon/>Map</button>
           <button className={tab === "rankings" ? "active" : ""} onClick={() => setTab("rankings")}><Trophy/>Rankings</button>
@@ -754,7 +825,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
         </nav>
         <div className="sidebar-card">
           <span className="eyebrow">YOUR JOURNEY</span>
-          <strong>{cities.length} cities</strong>
+          <strong>{citySummaries.length} cities</strong>
           <p>across {new Set(cities.map(c => c.country)).size} countries</p>
           <div className="progress"><span style={{ width: `${goalProgress}%` }}/></div>
           <small>{goalProgress}% of your {currentYear} goal</small>
@@ -766,9 +837,11 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
       </aside>
 
       <section className="main-pane">
+        {!user && guestStorageError && <div className="guest-import" role="alert">{guestStorageError}</div>}
+        {user && guestImportAvailable && entryStage === "done" && <div className="guest-import"><span>Your guest journal is still on this device.</span><button disabled={saveBusy} onClick={importGuestJournal}>{saveBusy?"Saving…":"Save it to my account →"}</button>{saveError&&<p role="alert">{saveError}</p>}</div>}
         <header className="topbar">
           <div>
-            {nativeMode && tab === "map" && <div className="native-only native-map-brand"><span className="brand-mark"><MapPin size={18}/></span><span>citylogger</span></div>}
+            {nativeMode && tab === "map" && <div className="native-only native-map-brand"><span className="brand-mark"><MapPin size={18}/></span><span>citylog</span></div>}
             <p className="kicker">{tab === "map" ? "YOUR TRAVEL MAP" : tab === "rankings" ? "YOUR FAVOURITES" : tab === "log" ? "YOUR TRAVEL LOG" : tab === "compare" ? "CITY HEAD TO HEAD" : tab === "lists" ? "YOUR COLLECTIONS" : "YOUR JOURNEY"}</p>
             <h1>{tab === "map" ? "The world, according to you." : tab === "rankings" ? "Cities worth returning to." : tab === "log" ? "Every trip, in order." : tab === "compare" ? "How do your cities compare?" : tab === "lists" ? "Save places your way." : "A life well travelled."}</h1>
           </div>
@@ -781,9 +854,10 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
         {tab === "map" && (
           <>
             <div className="control-row">
-              <div className="segmented">
-                {categories.map(item => <button key={item} className={category === item ? "active" : ""} onClick={() => setCategory(item)}>{item}</button>)}
-              </div>
+              {nativeMode ? <div className="compact-categories">
+                <button className={category === "Overall" ? "active" : ""} onClick={() => setCategory("Overall")}>Overall</button>
+                <label className="category-select"><span className="sr-only">Map rating category</span><select aria-label="Map rating category" value={category === "Overall" ? "" : category} onChange={event => setCategory(event.target.value || "Overall")}><option value="">Categories</option>{categories.slice(1).map(item=><option key={item}>{item}</option>)}</select><ChevronDown/></label>
+              </div> : <div className="segmented">{categories.map(item=><button key={item} className={category===item?"active":""} onClick={()=>setCategory(item)}>{item}</button>)}</div>}
               <button className="filter-btn" onClick={() => setFilterOpen(!filterOpen)}><SlidersHorizontal/>Filters{continent !== "All" && <span className="filter-dot"/>}</button>
               {filterOpen && <div className="filter-popover">
                 <label>Continent</label>
@@ -799,22 +873,17 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
               {selected && filtered.some(c => c.id === selected.id) && (
                 <article className="city-preview">
                   <button className="close-btn" onClick={() => setSelected(null)} aria-label="Close"><X/></button>
-                  <div className="photo-block"><span>{selected.emoji}</span><small>{selected.country.toUpperCase()}</small></div>
                   <div className="preview-copy">
-                    <p className="city-meta"><MapPin/>{selected.country} · {formatVisitDate(selected.dateFrom, selected.dateTo)}</p>
-                    <h2>{selected.name}</h2>
-                    <div className="stars">{[1,2,3,4,5].map(n => <Star key={n} fill={n <= Math.round(selected.rating) ? colorForScore(selected.rating) : "none"} color={n <= Math.round(selected.rating) ? colorForScore(selected.rating) : "#c7c9c3"}/>)}<strong>{selected.rating.toFixed(1)}</strong></div>
-                    <p>“{selected.note}”</p>
+                    <p className="city-meta">{selected.country}</p>
+                    <div className="preview-title"><h2>{selected.name}</h2><strong style={{color:colorForScore(selected.rating)}}>{selected.rating.toFixed(1)} ★</strong></div>
+                    {selected.note && <p className="preview-note">{selected.note}</p>}
                     <div className="preview-actions">
-                      <button className="text-btn">View city story <span>→</span></button>
-                      {user && typeof selected.id === "string" && <div className="visit-actions">
-                        <button className="visit-action edit" onClick={editSelectedVisit}><Pencil/>Edit</button>
-                        <button className="visit-action delete" onClick={removeSelectedVisit}><X/>Delete</button>
-                      </div>}
+                      <button className="text-btn" onClick={()=>setTab("city")}>View City Story <span>→</span></button>
                     </div>
                   </div>
                 </article>
               )}
+              {!citySummaries.length && syncStatus !== "loading" && <div className="map-empty"><p className="kicker">YOUR STORY STARTS SOMEWHERE</p><h2>What city comes to mind?</h2><p>One place. One memory. The beginning of your map.</p><button className="primary-btn" onClick={openAddCity}><Plus/>Log your first city</button></div>}
             </div>
           </>
         )}
@@ -839,7 +908,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
                   <GripVertical className="drag-handle" aria-label="Drag to reorder"/>
                   <span className={`rank-number ${index < 3 ? "top" : ""}`}>{index + 1}</span>
                   <span className="rank-flag">{city.emoji}</span>
-                  <button className="rank-main rank-city-link" onClick={() => { setSelected(city); setTab("map"); }}><strong>{city.name}</strong><small>{city.country} · {formatVisitDate(city.dateFrom, city.dateTo)}</small></button>
+                  <button className="rank-main rank-city-link" onClick={() => { setSelected(city); setTab("city"); }}><strong>{city.name}</strong><small>{city.country} · {formatVisitDate(city.dateFrom, city.dateTo)}</small></button>
                   <span className="rank-rating"><strong>{(scoreFor(city, category) || 0).toFixed(1)}</strong><Star fill={colorForScore(scoreFor(city, category) || 0)} color={colorForScore(scoreFor(city, category) || 0)}/></span>
                   <span className="rank-bar"><i style={{ width: `${(scoreFor(city, category) || 0) * 20}%`, background: colorForScore(scoreFor(city, category) || 0) }}/></span>
                   <span className="rank-order-buttons native-only"><button disabled={index === 0} onClick={() => moveRankedCity(city.id, -1)} aria-label={`Move ${city.name} up`}>↑</button><button disabled={index === displayedRanked.length - 1} onClick={() => moveRankedCity(city.id, 1)} aria-label={`Move ${city.name} down`}>↓</button></span>
@@ -854,7 +923,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
             <div className="log-summary"><BookOpen/><span><strong>{cities.length} entries</strong><small>Newest visits first</small></span></div>
             <div className="log-list">
               {chronological.map((city, index) => (
-                <button key={city.id} className="log-entry" onClick={() => { setSelected(city); setTab(nativeMode ? "city" : "map"); }}>
+                <button key={city.id} className="log-entry" onClick={() => { setSelected(city); setTab("city"); }}>
                   <span className="log-date">{new Intl.DateTimeFormat("en-GB", { month: "short", year: "numeric" }).format(new Date(`${city.dateFrom}T12:00:00`))}</span>
                   <span className="log-line"><i className={index === 0 ? "latest" : ""}/></span>
                   <span className="rank-flag">{city.emoji}</span>
@@ -866,26 +935,26 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
           </div>
         )}
 
-        {tab === "city" && selected && (
-          <div className="native-only city-detail-layout">
-            <button className="city-detail-back" onClick={() => setTab("log")}><ArrowLeft/>Travel log</button>
+        {tab === "city" && selected && currentCity && (
+          <div className="city-detail-layout">
+            <div className="story-navigation"><button className="city-detail-back" onClick={() => {setSelected(currentCity);setTab("map");}}><ArrowLeft/>Your map</button><span>{storyHistory.length} {storyHistory.length===1?"visit":"visits"} · A story still being written</span></div>
             <article className="city-detail-card">
               <header>
-                <span className="city-detail-flag">{selected.emoji}</span>
-                <div><p className="kicker">{selected.country.toUpperCase()}</p><h2>{selected.name}</h2><small>{formatVisitDate(selected.dateFrom, selected.dateTo)}{selected.visitType ? ` · ${selected.visitType}` : ""}</small></div>
-                <strong style={{ color: colorForScore(selected.rating) }}>{selected.rating.toFixed(1)}</strong>
+                <div><p className="kicker">CITY STORY · {selected.country.toUpperCase()}</p><h2>{selected.name}</h2><small>{selected.continent} · {displayedRanked.findIndex(city=>cityIdentity(city)===cityIdentity(selected))>=0 ? `#${displayedRanked.findIndex(city=>cityIdentity(city)===cityIdentity(selected))+1} in your current ranking` : "Your personal perspective"}</small></div>
+                <div className="story-overall"><strong style={{ color: colorForScore(currentCity.rating) }}>{currentCity.rating.toFixed(1)}<span> / 5</span></strong><small>Latest visit · overall</small></div>
               </header>
+              {selected.photoUrl && <img className="story-photo" src={selected.photoUrl} alt={`${selected.name}, from your visit`} />}
+              <div className="story-columns"><section className="story-current"><div className="story-section-title"><p className="kicker">{selected.id===currentCity.id?"CURRENT CITY LOG":"PAST VISIT"}</p>{selected.id!==currentCity.id&&<button className="text-btn" onClick={()=>setSelected(currentCity)}>Latest visit →</button>}</div><h3>{formatVisitDate(selected.dateFrom, selected.dateTo)}</h3><p className="story-visit-type">{selected.visitType || "Personal visit"} · {selected.rating.toFixed(1)} ★</p>
               <div className="city-detail-ratings">
                 {[...requiredRatingKeys, ...optionalRatingKeys].map(key => selected.ratings[key] !== null && (
                   <div key={key}><span>{key === "personal" ? "Personal experience" : key}</span><b>{selected.ratings[key]?.toFixed(1)}</b><i><span style={{ width: `${(selected.ratings[key] || 0) * 20}%`, background: colorForScore(selected.ratings[key] || 0) }}/></i></div>
                 ))}
               </div>
-              <section><p className="kicker">YOUR MEMORY</p><p>“{selected.note}”</p></section>
-              {user && typeof selected.id === "string" && <div className="city-detail-actions">
+              <section className="story-memory"><p className="kicker">YOUR MEMORY</p><p>{selected.note || "There’s more to this story. Add a memory when you’re ready."}</p></section>
+              <div className="city-detail-actions">
                 <button className="visit-action edit" onClick={editSelectedVisit}><Pencil/>Edit visit</button>
                 <button className="visit-action delete" onClick={removeSelectedVisit}><X/>Delete</button>
-              </div>}
-              <button className="city-detail-map" onClick={() => setTab("map")}><MapPin/>Show on map</button>
+              </div></section><section className="story-history"><div className="story-section-title"><p className="kicker">LOG HISTORY</p><span>{storyHistory.length} entries</span></div><div className="history-timeline">{storyHistory.map(visit=><button key={visit.id} className={`history-entry ${visit.id===selected.id?"active":""}`} onClick={()=>setSelected(visit)}><i style={{background:colorForScore(visit.rating)}}/><span><strong>{new Intl.DateTimeFormat("en-GB",{month:"long",year:"numeric"}).format(new Date(`${visit.dateFrom}T12:00:00`))}</strong><small>{visit.visitType || "Visit"}</small>{visit.note&&<p>{visit.note}</p>}</span><b>{visit.rating.toFixed(1)} ★</b></button>)}</div><button className="primary-btn" onClick={()=>{beginAdd(currentCity);setEditorReturnTab("city");setAdding(true);}}><Plus/>Log another visit</button><p className="history-hint">A new visit adds to your story. Earlier memories stay here.</p></section></div>
             </article>
           </div>
         )}
@@ -896,12 +965,12 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
               <div className="section-heading"><span><GitCompareArrows/></span><div><p className="kicker">COMPARE CITIES</p><h2>Head to head</h2></div></div>
               <div className="compare-pickers">
                 {[0, 1].map(index => (
-                  <select key={index} aria-label={`Compare city ${index + 1}`} value={String(compareIds[index])} onChange={event => setCompareIds(current => {
+                  <select key={index} aria-label={`Compare city ${index + 1}`} value={String(compared[index]?.id || "")} onChange={event => setCompareIds(current => {
                     const next: [CityId, CityId] = [...current];
                     next[index] = event.target.value;
                     return next;
                   })}>
-                    {cities.map(city => <option key={city.id} value={city.id}>{city.name}, {city.country}</option>)}
+                    {citySummaries.map(city => <option key={city.id} value={city.id}>{city.name}, {city.country}</option>)}
                   </select>
                 ))}
               </div>
@@ -910,7 +979,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
                   <article key={`${city.id}-${index}`}>
                     <span className="compare-flag">{city.emoji}</span><h3>{city.name}</h3><small>{city.country}</small>
                     <strong style={{ color: colorForScore(city.rating) }}>{city.rating.toFixed(1)}</strong>
-                    <div className="compare-ratings">{requiredRatingKeys.map(key => <p key={key}><span>{key === "personal" ? "Experience" : key}</span><b>{city.ratings[key]?.toFixed(1)}</b></p>)}</div>
+                    <div className="compare-ratings">{[...requiredRatingKeys,...optionalRatingKeys].map(key => <p key={key}><span>{key === "personal" ? "Experience" : key}</span><b>{city.ratings[key]?.toFixed(1) || "—"}</b></p>)}</div>
                   </article>
                 ))}
               </div>
@@ -937,7 +1006,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
                     <select aria-label={`Add city to ${list.title}`} value="" onChange={event => {
                       const city = cities.find(candidate => String(candidate.id) === event.target.value);
                       if (city) addCityToList(list.id, city.id);
-                    }}><option value="">+ Add a city</option>{cities.filter(city => !list.cityIds.includes(city.id)).map(city => <option key={city.id} value={city.id}>{city.name}</option>)}</select>
+                    }}><option value="">+ Add a city</option>{citySummaries.filter(city => !list.cityIds.some(id => cities.some(visit => visit.id===id && cityIdentity(visit)===cityIdentity(city)))).map(city => <option key={city.id} value={city.id}>{city.name}</option>)}</select>
                   </div>
                 </article>
               ))}
@@ -946,12 +1015,12 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
                 <div className="section-heading"><span><GitCompareArrows/></span><div><p className="kicker">COMPARE CITIES</p><h2>Head to head</h2></div></div>
                 <div className="compare-pickers">
                   {[0, 1].map(index => (
-                    <select key={index} aria-label={`Compare city ${index + 1}`} value={String(compareIds[index])} onChange={event => setCompareIds(current => {
+                    <select key={index} aria-label={`Compare city ${index + 1}`} value={String(compared[index]?.id || "")} onChange={event => setCompareIds(current => {
                       const next: [CityId, CityId] = [...current];
                       next[index] = event.target.value;
                       return next;
                     })}>
-                      {cities.map(city => <option key={city.id} value={city.id}>{city.name}, {city.country}</option>)}
+                      {citySummaries.map(city => <option key={city.id} value={city.id}>{city.name}, {city.country}</option>)}
                     </select>
                   ))}
                 </div>
@@ -960,7 +1029,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
                     <article key={`native-${city.id}-${index}`}>
                       <span className="compare-flag">{city.emoji}</span><h3>{city.name}</h3><small>{city.country}</small>
                       <strong style={{ color: colorForScore(city.rating) }}>{city.rating.toFixed(1)}</strong>
-                      <div className="compare-ratings">{requiredRatingKeys.map(key => <p key={key}><span>{key === "personal" ? "Experience" : key}</span><b>{city.ratings[key]?.toFixed(1)}</b></p>)}</div>
+                      <div className="compare-ratings">{[...requiredRatingKeys,...optionalRatingKeys].map(key => <p key={key}><span>{key === "personal" ? "Experience" : key}</span><b>{city.ratings[key]?.toFixed(1) || "—"}</b></p>)}</div>
                     </article>
                   ))}
                 </div>
@@ -976,15 +1045,15 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
               <div><p className="kicker">TRAVEL JOURNAL</p><h2>{profileName}</h2><p>Collecting places, not things.</p></div>
             </div>
             <div className="stats-grid">
-              <article><MapPin/><strong>{cities.length}</strong><span>Cities logged</span></article>
+              <article><MapPin/><strong>{citySummaries.length}</strong><span>Cities logged</span></article>
               <article><Compass/><strong>{new Set(cities.map(c => c.country)).size}</strong><span>Countries</span></article>
-              <article><Star/><strong>{(cities.reduce((a,c) => a + c.rating, 0) / cities.length).toFixed(1)}</strong><span>Average rating</span></article>
+              <article><Star/><strong>{citySummaries.length ? (citySummaries.reduce((a,c) => a + c.rating, 0) / citySummaries.length).toFixed(1) : "—"}</strong><span>Average rating</span></article>
             </div>
-            <article className="insight-card"><span className="insight-icon"><Sparkles/></span><div><p className="kicker">YOUR TRAVEL TASTE</p><h3>You’re happiest in culture-rich coastal cities.</h3><p>Lisbon, Kyoto and Cape Town define your top travel pattern. Food and nature consistently lift your ratings.</p></div></article>
+            <article className="insight-card"><span className="insight-icon"><Sparkles/></span><div><p className="kicker">YOUR TRAVEL STORY</p><h3>{cities.length ? `${cities.length} memories. Still more to discover.` : "Your next chapter starts with a city."}</h3><p>Your ratings and memories build a picture of what matters to you.</p></div></article>
             <div className="year-card">
               <div>
                 <p className="kicker">{currentYear} TRAVEL GOAL</p>
-                <h3>{citiesThisYear} of {yearlyGoal} new cities</h3>
+                <h3>{citiesThisYear} of {yearlyGoal} cities this year</h3>
               </div>
               <div className="goal-actions">
                 <span>{goalProgress}%</span>
@@ -993,7 +1062,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
               <div className="wide-progress"><i style={{width:`${goalProgress}%`}}/></div>
               {editingGoal && (
                 <form className="goal-editor" onSubmit={event => { event.preventDefault(); saveYearlyGoal(); }}>
-                  <label htmlFor="yearly-city-goal">How many new cities do you want to visit in {currentYear}?</label>
+                  <label htmlFor="yearly-city-goal">How many cities do you want to visit in {currentYear}?</label>
                   <div>
                     <input id="yearly-city-goal" type="number" min="1" max="999" value={goalDraft} onChange={event => setGoalDraft(event.target.value)}/>
                     <button type="submit">Save goal</button>
@@ -1004,6 +1073,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
             </div>
             <section className="account-settings">
               <p className="kicker">ACCOUNT & PRIVACY</p>
+              <button className="replay-onboarding" onClick={()=>{setOnboardingNotice("");setEntryStage("cards");}}>Replay the CityLog introduction <span>→</span></button>
               {user ? <>
                 <h3>{user.email}</h3>
                 <p>Your cities, ratings and notes are private and accessible only to this account.</p>
@@ -1017,23 +1087,28 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
                 </div>
               </> : <>
                 <h3>Keep your travel history safe.</h3>
-                <p>Create an account to save visits permanently and sync them across your devices.</p>
+                <p>Your guest journal is saved on this device. Create an account for cloud backup and access on other devices. Clearing browser or app data removes guest entries.</p>
                 <button className="primary-btn" onClick={() => setAuthOpen(true)}>Create account or sign in</button>
+                <div className="settings-actions"><a href={publicPageUrl("/support")}>Support</a><a href={publicPageUrl("/privacy")}>Privacy Policy</a><a href={publicPageUrl("/terms")}>Terms of Use</a></div>
               </>}
             </section>
           </div>
         )}
+        {tab !== "map" && tab !== "profile" && tab !== "city" && tab !== "lists" && !cities.length && <div className="journal-empty"><MapIcon/><h2>A world of possibilities.</h2><p>Log a city to start your personal record, compare experiences and find your favourites.</p><button className="primary-btn" onClick={openAddCity}><Plus/>Log a city</button></div>}
       </section>
 
       <nav className="mobile-nav" aria-label="Primary">
         <button className={tab === "map" ? "active" : ""} onClick={() => setTab("map")}><MapIcon/><span>Map</span></button>
         <button className={tab === "rankings" ? "active" : ""} onClick={() => setTab("rankings")}><Trophy/><span>Rankings</span></button>
-        <button className="add-mobile" onClick={openAddCity}><Plus/></button>
+        <button className="add-mobile" aria-label="Log a city" onClick={openAddCity}><Plus/></button>
         <button className={tab === "log" || tab === "city" ? "active" : ""} onClick={() => setTab("log")}><BookOpen/><span>Log</span></button>
         <button className={`compare-tab ${tab === "compare" ? "active" : ""}`} onClick={() => setTab("compare")}><GitCompareArrows/><span>Compare</span></button>
         <button className={tab === "lists" ? "active" : ""} onClick={() => setTab("lists")}><ListPlus/><span>Lists</span></button>
         <button className={tab === "profile" ? "active" : ""} onClick={() => setTab("profile")}><UserRound/><span>Profile</span></button>
       </nav>
+      </div>
+
+      <Onboarding stage={entryStage} onStage={setEntryStage} notice={onboardingNotice} onGuest={enterGuest} onComplete={finishOnboarding} onAuth={mode=>{setAuthView(mode);setAuthMessage("");setAuthOpen(true);}}/>
 
       {adding && (
         <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) closeVisitEditor(); }}>
@@ -1081,7 +1156,9 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
                 </div>
                 <label className="select-field"><span><Filter/>Visit type <small>OPTIONAL</small></span><select value={visitType} onChange={event => setVisitType(event.target.value)}><option value="">Choose a visit type</option><option>Holiday</option><option>City break</option><option>Road trip</option><option>Work</option><option>Study</option><option>Lived there</option><option>Visiting friends or family</option><option>Day trip</option></select></label>
                 <label className="note-field"><span>Your memory <small>OPTIONAL</small></span><textarea value={note} onChange={e => setNote(e.target.value)} maxLength={160} placeholder="What made this city memorable?"/><small>{note.length}/160</small></label>
-                <button className="save-btn" disabled={!requiredRatingsComplete || !dateFrom || !dateTo || dateTo < dateFrom} onClick={saveCity}>{editingVisitId ? <><Check/>Save changes · {draftOverall.toFixed(1)}</> : <><MapPin/>Add to my map · {draftOverall.toFixed(1)}</>}</button>
+                {saveError && <p className="auth-message" role="alert">{saveError}</p>}
+                {!user && <p className="guest-save-note">Saved on this device. You can move your journal to an account later.</p>}
+                <button className="save-btn" disabled={saveBusy || !requiredRatingsComplete || !dateFrom || !dateTo || dateTo < dateFrom} onClick={saveCity}>{saveBusy ? "Saving your visit…" : editingVisitId ? <><Check/>Save changes · {draftOverall.toFixed(1)}</> : <><MapPin/>Add to my map · {draftOverall.toFixed(1)}</>}</button>
               </div>
             )}
           </section>
@@ -1094,7 +1171,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
             <button className="close-btn static auth-close" onClick={() => setAuthOpen(false)} aria-label="Close account dialog"><X/></button>
             {authView === "welcome" ? <>
               <span className="auth-mark"><MapPin/></span>
-              <p className="kicker">WELCOME TO CITYLOGGER</p>
+              <p className="kicker">WELCOME TO CITYLOG</p>
               <h2 id="auth-title">Your travels, saved for good.</h2>
               <p>Explore the app first. When you’re ready, create a private account to save visits and sync them across devices.</p>
               {authMessage && <p className="auth-message">{authMessage}</p>}
@@ -1105,7 +1182,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
             </> : <>
               <button className="auth-back" onClick={() => { setAuthView("welcome"); setAuthMessage(""); }}><ArrowLeft/>Back</button>
               <p className="kicker">{authView === "signup" ? "CREATE ACCOUNT" : authView === "signin" ? "WELCOME BACK" : authView === "forgot" ? "RESET PASSWORD" : "CHOOSE A NEW PASSWORD"}</p>
-              <h2 id="auth-title">{authView === "signup" ? "Start your private travel log." : authView === "signin" ? "Sign in to CityLogger." : authView === "forgot" ? "Check your inbox next." : "Secure your account."}</h2>
+              <h2 id="auth-title">{authView === "signup" ? "Start your private travel log." : authView === "signin" ? "Sign in to CityLog." : authView === "forgot" ? "Check your inbox next." : "Secure your account."}</h2>
               {authView === "signup" && <label className="auth-field"><span>Display name <small>OPTIONAL</small></span><input value={authName} onChange={event => setAuthName(event.target.value)} autoComplete="name"/></label>}
               {authView !== "reset" && <label className="auth-field"><span>Email</span><input type="email" value={authEmail} onChange={event => setAuthEmail(event.target.value)} autoComplete="email"/></label>}
               {authView !== "forgot" && <label className="auth-field"><span>Password</span><input type="password" minLength={8} value={authPassword} onChange={event => setAuthPassword(event.target.value)} autoComplete={authView === "signin" ? "current-password" : "new-password"}/></label>}
@@ -1118,7 +1195,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
           </section>
         </div>
       )}
-      {authReady && syncStatus !== "idle" && <div className={`sync-toast ${syncStatus}`}>{syncStatus === "loading" ? "Syncing your travels…" : syncStatus === "saved" ? "Saved securely" : "Could not sync. Please try again."}</div>}
+      {authReady && entryStage === "done" && syncStatus !== "idle" && <div role="status" className={`sync-toast ${syncStatus}`}>{syncStatus === "loading" ? "Saving your travels…" : syncStatus === "saved" ? user ? "Saved to your account" : "Saved on this device" : "Could not sync. Please try again."}</div>}
     </main>
   );
 }
