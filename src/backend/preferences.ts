@@ -42,7 +42,7 @@ export async function loadAppState(): Promise<StoredAppState> {
   const client = getBackendClient();
   await requireCurrentUser();
   const [profileResult, wishlistResult, listsResult, listCitiesResult] = await Promise.all([
-    client.from("profiles").select("display_name, yearly_goal, ranking_order").single(),
+    client.from("profiles").select("display_name, yearly_goal, ranking_order, wishlist_order").single(),
     client.from("wishlist_cities").select("id, city_name, country, continent, latitude, longitude, emoji").order("created_at"),
     client.from("personal_lists").select("id, title").order("position").order("created_at"),
     client.from("personal_list_cities").select("list_id, visit_id").order("position").order("created_at")
@@ -51,6 +51,14 @@ export async function loadAppState(): Promise<StoredAppState> {
   if (error) throw normaliseBackendError(error, "Could not load your saved lists and preferences.");
 
   const listCities = (listCitiesResult.data || []) as ListCityRow[];
+  const cityIdsByList = new Map<string, string[]>();
+  for (const item of listCities) {
+    const cityIds = cityIdsByList.get(item.list_id) || [];
+    cityIds.push(item.visit_id);
+    cityIdsByList.set(item.list_id, cityIds);
+  }
+  const wishlistOrder = (profileResult.data?.wishlist_order || []) as string[];
+  const wishlistPositions = new Map(wishlistOrder.map((id, index) => [id, index]));
   return {
     displayName: profileResult.data?.display_name || "",
     yearlyGoal: profileResult.data?.yearly_goal || 10,
@@ -63,11 +71,11 @@ export async function loadAppState(): Promise<StoredAppState> {
       lat: row.latitude,
       lng: row.longitude,
       emoji: row.emoji
-    })),
+    })).sort((a, b) => (wishlistPositions.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (wishlistPositions.get(b.id) ?? Number.MAX_SAFE_INTEGER)),
     lists: ((listsResult.data || []) as ListRow[]).map(list => ({
       id: list.id,
       title: list.title,
-      cityIds: listCities.filter(item => item.list_id === list.id).map(item => item.visit_id)
+      cityIds: cityIdsByList.get(list.id) || []
     }))
   };
 }
@@ -85,6 +93,13 @@ export async function saveRankingOrder(rankingOrder: string[]) {
   const user = await requireCurrentUser();
   const { error } = await client.from("profiles").upsert({ id: user.id, ranking_order: rankingOrder }, { onConflict: "id" });
   if (error) throw normaliseBackendError(error, "Could not save your ranking order.");
+}
+
+export async function saveWishlistOrder(wishlistOrder: string[]) {
+  const client = getBackendClient();
+  const user = await requireCurrentUser();
+  const { error } = await client.from("profiles").upsert({ id: user.id, wishlist_order: wishlistOrder }, { onConflict: "id" });
+  if (error) throw normaliseBackendError(error, "Could not save your Want to Visit order.");
 }
 
 export async function addWishlistCity(city: Omit<StoredWishlistCity, "id">): Promise<StoredWishlistCity> {
@@ -121,6 +136,22 @@ export async function createPersonalList(title: string, position: number, id = c
   const { data, error } = await client.from("personal_lists").upsert({ id, user_id: user.id, title: cleanTitle, position }, { onConflict: "id" }).select("id, title").single();
   if (error) throw normaliseBackendError(error, "Could not create this list.");
   return { id: data.id, title: data.title, cityIds: [] };
+}
+
+export async function renamePersonalList(listId: string, title: string) {
+  const cleanTitle = title.trim();
+  if (!cleanTitle || cleanTitle.length > 100) throw new BackendError("VALIDATION", "List titles must be between 1 and 100 characters.");
+  const client = getBackendClient();
+  const user = await requireCurrentUser();
+  const { error } = await client.from("personal_lists").update({ title: cleanTitle }).eq("id", listId).eq("user_id", user.id);
+  if (error) throw normaliseBackendError(error, "Could not rename this list.");
+}
+
+export async function deletePersonalList(listId: string) {
+  const client = getBackendClient();
+  const user = await requireCurrentUser();
+  const { error } = await client.from("personal_lists").delete().eq("id", listId).eq("user_id", user.id);
+  if (error) throw normaliseBackendError(error, "Could not delete this list.");
 }
 
 export async function savePersonalListCities(listId: string, cityIds: string[]) {

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="136" height="44" viewBox="0 0 136 44" role="img" aria-labelledby="title">
+  <title id="title">citylog</title>
+  <rect x="4" y="6" width="32" height="32" rx="10" transform="rotate(-5 20 22)" fill="#2F7656"/>
+  <g transform="translate(11 13) scale(.75)" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/>
+    <circle cx="12" cy="10" r="2.5"/>
+  </g>
+  <text x="47" y="30" fill="#213D32" font-family="Manrope, Arial, sans-serif" font-size="20" font-weight="700" letter-spacing="-.5">citylog</text>
+</svg>

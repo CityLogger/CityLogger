@@ -1,11 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { cityIdentity, latestCities, visitHistory } from "../src/frontend/journey";
+import { cityIdentity, latestCities, visitHistory, visitMonth } from "../src/frontend/journey";
 
 const first = { id:"first", name:"Lisbon", country:"Portugal", dateFrom:"2024-09-10", dateTo:"2024-09-13",rating:4.6,note:"First visit" };
 const second = { ...first,id:"second",dateFrom:"2026-05-02",dateTo:"2026-05-05",rating:4.8,note:"Returned" };
 const other = { ...first,id:"other",name:"Kyoto",country:"Japan" };
 
 describe("city stories",()=>{
+  it("orders undated logs by creation time without inventing a visit date",()=>{
+    const undated={...first,id:"undated",dateFrom:"",dateTo:"",createdAt:"2026-10-16T12:00:00Z"};
+    expect(latestCities([first,second,undated])).toEqual([undated]);
+    expect(visitHistory([undated,second,first],first)).toHaveLength(3);
+    expect(visitMonth("")).toBe("Date not added");
+  });
   it("keeps all visits while selecting the latest rating for the map",()=>{
     const visits=[first,other,second];
     expect(latestCities(visits)).toEqual([second,other]);

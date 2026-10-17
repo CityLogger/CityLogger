@@ -1,5 +1,7 @@
 /* Shared new features. Mobile visual redesign is in modern.css, loaded only by Capacitor. */
 .product-layer { display:contents; }
+.rating-mode-toggle { display:block;background:none;border:0;color:var(--muted);font-size:12px;text-decoration:underline;text-underline-offset:3px;padding:10px 0;min-height:40px;cursor:pointer; }
+.date-range label small { font-size:8px;font-weight:400;color:var(--muted);letter-spacing:.5px; }
 .app-shell.entry-active { height:100dvh;overflow:hidden; }
 .sr-only { position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap; }
 .auth-backdrop { z-index:90; }
@@ -23,12 +25,15 @@
 .entry-top { display:flex;align-items:center;justify-content:space-between;position:relative;z-index:1;flex-shrink:0; }
 .citylog-wordmark { display:flex;gap:6px;align-items:baseline;font:700 24px "Manrope",sans-serif;letter-spacing:-1.5px; }
 .wordmark-dot { width:6px;height:6px;border-radius:50%;background:#5c9562; }
+.entry-top .entry-brand { font-size:20px; }
+.welcome-brand { justify-content:center;outline:none; }
+.welcome-brand .brand-mark { flex:none; }
 .quiet-btn { display:inline-flex;align-items:center;justify-content:center;gap:10px;border:0;background:transparent;min-height:44px;padding:10px 14px;color:#657366;font-size:13px; }
 .quiet-btn:disabled { opacity:.25; }
 .welcome-content { position:relative;width:min(680px,100%);text-align:center;margin:auto; padding:16px 0; }
 .welcome-art { width:260px;max-width:80%;height:110px;margin:0 auto 18px;opacity:.85;overflow:hidden;mask-image:radial-gradient(ellipse,#000 45%,transparent 72%); }
 .welcome-art .onboarding-map { width:100%;height:100%; }
-.welcome-content h1 { font-size:clamp(42px,5vw,60px);font-weight:500;line-height:1.05;outline:none; }
+.welcome-content h1 { font-size:20px;font-weight:700;line-height:1.05;outline:none; }
 .entry-description { font-size:15px;line-height:1.7;color:var(--muted);max-width:295px;margin:22px auto 28px; }
 .welcome-actions { display:grid;gap:10px;max-width:310px;margin:auto; }
 .welcome-actions .primary-btn { min-height:52px;justify-content:space-between;padding-inline:24px; }
@@ -72,7 +77,7 @@
 .onboarding-notice { font-size:12px;line-height:1.6;color:#506a4d;background:#e6ecd9;padding:12px 18px;border-radius:14px; }
 .onboarding-finale { margin:auto;width:min(850px,100%);padding:48px 0; }
 .onboarding-finale h1 { font-size:clamp(44px,8.5vw,100px);line-height:1.04;font-weight:500;letter-spacing:-.06em;outline:none;margin:26px 0 40px; }
-.onboarding-finale h1 em { font-family:Georgia,serif;font-weight:400; }
+.onboarding-finale h1 em { font-family:"Manrope",sans-serif;font-weight:600;font-style:normal; }
 .final-start { display:flex;gap:28px;align-items:center;background:transparent;border:0;border-bottom:1px solid #80967e;padding:18px 0;color:var(--green);font-size:12px;letter-spacing:1.5px;opacity:0;transform:translateY(10px);transition:opacity .5s,transform .5s; }
 .final-start.revealed { opacity:1;transform:none; }
 .final-start svg { width:23px; }
@@ -103,7 +108,7 @@
 .city-detail-ratings i { grid-column:1/-1;height:4px;border-radius:9px;overflow:hidden;background:#e0e6da; }
 .city-detail-ratings i span { display:block;height:100%;border-radius:inherit; }
 .story-memory { border-top:1px solid var(--line);padding:23px 0; }
-.story-memory>p:last-child { font:italic 22px/1.5 Georgia,serif;color:#536553;margin:15px 0; }
+.story-memory>p:last-child { font:500 20px/1.55 "DM Sans",sans-serif;color:#536553;margin:15px 0; }
 .city-detail-actions { display:flex;gap:10px;margin:10px 0; }
 .visit-action { border:0;border-radius:100px;padding:11px 18px;min-height:42px; }
 .visit-action.edit { background:#e1eadc;color:var(--green); }
@@ -122,8 +127,14 @@
 .compact-categories>button { min-height:38px;border:0;border-radius:100px;background:transparent;padding:0 16px;font-size:12px;color:var(--muted); }
 .compact-categories>button.active { background:#e5ede4;color:var(--green);font-weight:700; }
 .category-select { display:flex;align-items:center;position:relative; }
-.category-select select { appearance:none;min-height:38px;background:transparent;border:0;padding:0 33px 0 13px;color:var(--ink);font-size:12px;max-width:160px;cursor:pointer; }
-.category-select svg { position:absolute;right:11px;width:13px;pointer-events:none; }
+.category-select>button { display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:38px;max-width:160px;background:transparent;border:0;border-radius:100px;padding:0 13px;color:var(--ink);font-size:12px;font-weight:600;white-space:nowrap; }
+.category-select>button.selected { color:var(--green);background:#e8efe7; }
+.category-select>button svg { width:14px;height:14px;transition:transform .2s ease; }
+.category-select>button svg.up { transform:rotate(180deg); }
+.category-menu { position:absolute;top:calc(100% + 12px);right:0;z-index:30;width:210px;padding:8px;border:1px solid #e5ebe2;border-radius:18px;background:#fffefa;box-shadow:0 18px 45px #1c3d322b;animation:panel-in .18s ease; }
+.category-menu button { width:100%;min-height:42px;border:0;border-radius:11px;padding:0 12px;display:flex;justify-content:space-between;align-items:center;background:transparent;color:var(--ink);font-size:13px;text-align:left; }
+.category-menu button:hover,.category-menu button[aria-checked="true"] { background:#edf3ea;color:var(--green); }
+.category-menu button svg { width:15px;height:15px; }
 .replay-onboarding { display:flex;justify-content:space-between;gap:20px;width:100%;background:transparent;border:0;border-bottom:1px solid var(--line);padding:16px 0;margin-bottom:22px;text-align:left; }
 .guest-import { position:relative;z-index:8;display:flex;gap:12px;flex-wrap:wrap;align-items:center;background:#f6efd7;padding:12px 18px;font-size:12px;border-radius:14px;margin-bottom:18px; }
 .guest-import button { border:0;background:transparent;color:var(--green);font-weight:700; }

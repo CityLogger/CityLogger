@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import { ArrowLeft, ArrowRight, MapPin } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 export type EntryStage = "loading" | "welcome" | "cards" | "final" | "leaving" | "done";
@@ -34,10 +34,10 @@ export default function Onboarding({stage,onStage,onAuth,onGuest,onComplete,noti
   const next=()=>index<2?setIndex(index+1):onStage("final");
   if(stage==="done")return null;
   return <section className={`entry-layer entry-${stage}`} aria-label="Welcome to CityLog">
-    <div className="entry-top">{stage!=="welcome"&&<span className="citylog-wordmark">CITYLOG<span className="wordmark-dot"/></span>}{stage==="cards"&&<button className="quiet-btn" onClick={()=>onStage("final")}>Skip</button>}</div>
+    <div className="entry-top">{stage!=="welcome"&&<span className="brand entry-brand"><span className="brand-mark"><MapPin size={18}/></span><span>citylog</span></span>}{stage==="cards"&&<button className="quiet-btn" onClick={()=>onStage("final")}>Skip</button>}</div>
     {stage==="loading"?<div className="entry-loading" role="status">Opening your world<span/></div>:stage==="welcome"?<div className="welcome-content">
       <div className="welcome-art"><MapDrawing/></div>
-      <h1 ref={heading} tabIndex={-1}>CITYLOG</h1>
+      <h1 className="brand welcome-brand" ref={heading} tabIndex={-1}><span className="brand-mark"><MapPin size={18}/></span><span>citylog</span></h1>
       <p className="entry-description">Your personal map of the cities you&apos;ve experienced.</p>
       <div className="welcome-actions"><button className="primary-btn" onClick={()=>onAuth("signup")}>Create account <ArrowRight/></button><button className="entry-secondary" onClick={()=>onAuth("signin")}>Sign in</button><button className="quiet-btn guest-choice" onClick={onGuest}>Continue as guest <ArrowRight/></button></div>
     </div>:stage==="cards"?<div className="onboarding-content" onTouchStart={e=>{touch.current={x:e.touches[0].clientX,y:e.touches[0].clientY};}} onTouchEnd={e=>{if(!touch.current)return;const dx=e.changedTouches[0].clientX-touch.current.x;const dy=e.changedTouches[0].clientY-touch.current.y;touch.current=null;if(Math.abs(dx)>60&&Math.abs(dx)>Math.abs(dy)*1.5){if(dx<0)next();else setIndex(Math.max(0,index-1));}}}>

@@ -20,7 +20,14 @@ export const authRedirectUrl = (path = "") => {
   if (Capacitor.isNativePlatform()) {
     return `citylogger://auth${path}`;
   }
-  const base = process.env.NEXT_PUBLIC_APP_URL ||
-    (typeof window !== "undefined" ? window.location.origin : "");
-  return `${base}${path}`;
+  const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  try {
+    if (configured) {
+      const url = new URL(configured);
+      if (url.protocol === "https:" && url.hostname !== "localhost" && url.hostname !== "127.0.0.1") {
+        return `${url.origin}${path}`;
+      }
+    }
+  } catch { /* An invalid or local development URL must never reach a real email. */ }
+  return `https://citylogger.app${path}`;
 };

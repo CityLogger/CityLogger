@@ -1,8 +1,33 @@
 import { describe, expect, it } from "vitest";
-import { calculateStoredOverall, validatePhoto, validateVisit } from "../src/backend";
+import { calculateStoredOverall, validateVisit } from "../src/backend";
 import { fromVisitRow, toVisitRow } from "../src/backend/model";
 
 describe("visit storage validation", () => {
+  const minimalVisit = {
+    name:"Lisbon",country:"Portugal",continent:"Europe",lat:38.72,lng:-9.14,emoji:"🇵🇹",
+    rating:4.5,dateFrom:"",dateTo:"",visitType:"",note:"",
+    ratings:{personal:4.5,culture:null,architecture:null,food:null,nature:null,nightlife:null}
+  };
+  it("saves personal-only ratings and omitted dates as null, not invented values", () => {
+    expect(validateVisit(minimalVisit)).toBeNull();
+    expect(calculateStoredOverall(minimalVisit.ratings)).toBe(4.5);
+    const row=toVisitRow(minimalVisit,"user-1","visit-1");
+    expect(row.date_from).toBeNull();
+    expect(row.date_to).toBeNull();
+    expect(row.food_rating).toBeNull();
+    expect(fromVisitRow(row)).toEqual({...minimalVisit,id:"visit-1"});
+  });
+  it("accepts either date independently but rejects reversed or invalid dates", () => {
+    expect(validateVisit({...minimalVisit,dateFrom:"2026-10-16"})).toBeNull();
+    expect(validateVisit({...minimalVisit,dateTo:"2026-10-16"})).toBeNull();
+    expect(validateVisit({...minimalVisit,dateFrom:"2026-10-16",dateTo:"2026-10-15"})).toContain("before");
+    expect(validateVisit({...minimalVisit,dateFrom:"2026-02-30"})).toContain("valid visit date");
+  });
+  it("retains the creation time without treating it as a visit date", () => {
+    const row={...toVisitRow(minimalVisit,"user-1","visit-1"),created_at:"2026-10-16T12:00:00Z"};
+    expect(fromVisitRow(row).createdAt).toBe(row.created_at);
+    expect(fromVisitRow(row).dateFrom).toBe("");
+  });
   it("calculates the overall score from required and optional categories", () => {
     expect(calculateStoredOverall({
       personal: 5,
@@ -12,15 +37,6 @@ describe("visit storage validation", () => {
       nature: null,
       nightlife: null
     })).toBe(4.5);
-  });
-
-  it("accepts supported photographs under 10 MB", () => {
-    expect(validatePhoto({ type: "image/jpeg", size: 2_000_000 })).toBeNull();
-  });
-
-  it("rejects unsupported or oversized photographs", () => {
-    expect(validatePhoto({ type: "image/gif", size: 1000 })).toContain("JPEG");
-    expect(validatePhoto({ type: "image/png", size: 11 * 1024 * 1024 })).toContain("10 MB");
   });
 
   it("accepts calculated decimal overall scores while enforcing half-star categories", () => {

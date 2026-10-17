@@ -26,20 +26,22 @@ Deno.serve(async (request: Request) => {
   }
   if (!payload.visit_id) return json({ error: "visit_id is required" }, 400);
 
-  const { data: visit } = await admin.from("visits").select("id").eq("id", payload.visit_id).eq("user_id", user.id).maybeSingle();
+  const { data: visit, error: visitReadError } = await admin.from("visits").select("id").eq("id", payload.visit_id).eq("user_id", user.id).maybeSingle();
+  if (visitReadError) return json({ error: "Could not inspect visit" }, 500);
   if (!visit) return json({ error: "Visit not found" }, 404);
 
   const { data: photographs, error: photoReadError } = await admin
     .from("visit_photographs").select("storage_path").eq("visit_id", visit.id).eq("user_id", user.id);
   if (photoReadError) return json({ error: "Could not inspect attached photographs" }, 500);
 
-  const { error: deleteError } = await admin.from("visits").delete().eq("id", visit.id).eq("user_id", user.id);
-  if (deleteError) return json({ error: "Could not delete visit" }, 500);
-
   const paths = (photographs || []).map((row: { storage_path: string }) => row.storage_path);
   if (paths.length) {
     const { error: storageError } = await admin.storage.from("visit-photos").remove(paths);
-    if (storageError) return json({ deleted: true, storage_cleanup_pending: true }, 202);
+    // Keep the visit and its photo records so cleanup can be retried.
+    if (storageError) return json({ error: "Could not remove attached photographs; visit was not deleted" }, 503);
   }
+
+  const { error: deleteError } = await admin.from("visits").delete().eq("id", visit.id).eq("user_id", user.id);
+  if (deleteError) return json({ error: "Could not delete visit; please retry" }, 500);
   return json({ deleted: true, storage_cleanup_pending: false });
 });

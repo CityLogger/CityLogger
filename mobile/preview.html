@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CityLog mobile preview</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { min-height: 100%; margin: 0; }
+      body {
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: #e9ede7;
+        font-family: system-ui, sans-serif;
+      }
+      .phone {
+        width: 390px;
+        height: 844px;
+        max-width: 100%;
+        max-height: calc(100dvh - 48px);
+        overflow: hidden;
+        border: 7px solid #202723;
+        border-radius: 42px;
+        background: #f8f8f5;
+        box-shadow: 0 24px 70px #203a2b35;
+      }
+      iframe { display: block; width: 100%; height: 100%; border: 0; }
+      @media (max-width: 430px) {
+        body { padding: 0; }
+        .phone { width: 100vw; height: 100dvh; max-height: none; border: 0; border-radius: 0; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="phone"><iframe id="app" title="Interactive CityLog mobile app preview"></iframe></div>
+    <script>
+      // This local preview always starts at the opening screen without deleting guest logs.
+      try { localStorage.removeItem("citylog-onboarding-v1"); } catch { /* Storage may be unavailable. */ }
+      document.getElementById("app").src = "/";
+    </script>
+  </body>
+</html>

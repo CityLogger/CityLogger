@@ -1,13 +1,16 @@
 import { getBackendClient, requireCurrentUser } from "./client";
 import { BackendError, normaliseBackendError } from "./errors";
 import { fromVisitRow, toVisitRow, validateVisit, VISIT_COLUMNS, type StoredCity, type VisitRow } from "./model";
+import { fetchAllPages } from "./pagination";
 
 export async function loadVisits(): Promise<StoredCity[]> {
   const client = getBackendClient();
   await requireCurrentUser();
-  const { data, error } = await client.from("visits").select(VISIT_COLUMNS).order("date_from", { ascending: false }).order("created_at", { ascending: false });
-  if (error) throw normaliseBackendError(error, "Could not load your visits.");
-  return (data as VisitRow[] || []).map(fromVisitRow);
+  const rows = await fetchAllPages<VisitRow>(
+    (from, to) => client.from("visits").select(VISIT_COLUMNS).order("date_from", { ascending: false }).order("created_at", { ascending: false }).order("id").range(from, to),
+    "Could not load your visits."
+  );
+  return rows.map(fromVisitRow);
 }
 
 export async function createVisit(city: Omit<StoredCity, "id">, operationId = crypto.randomUUID()): Promise<StoredCity> {
@@ -38,4 +41,5 @@ export async function deleteVisit(id: string) {
   const { data, error } = await client.functions.invoke("delete-visit", { body: { visit_id: id } });
   if (error) throw normaliseBackendError(error, "Could not delete this visit.");
   if (!data?.deleted) throw new BackendError("UNKNOWN", "The visit deletion did not complete.");
+  return { cleanupPending: Boolean(data.storage_cleanup_pending) };
 }
