@@ -40,9 +40,10 @@ for (const line of text.split(/\r?\n/)) {
     Number(cols[4]),
     Number(cols[5]),
     Number(cols[14]) || 0,
-    countryCode
+    countryCode,
+    cols[0]
   ];
-  const uniqueKey = `${normalize(name)}|${countryCode}`;
+  const uniqueKey = cols[0];
   const existing = uniqueCities.get(uniqueKey);
   if (!existing || record[6] > existing[6]) uniqueCities.set(uniqueKey, record);
 }

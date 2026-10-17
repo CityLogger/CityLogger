@@ -7,10 +7,12 @@ export function getBackendClient(): SupabaseClient {
   return supabase;
 }
 
-export async function requireCurrentUser(): Promise<User> {
+export async function requireCurrentUser(expectedUserId?: string): Promise<User> {
   const client = getBackendClient();
+  const { data: before } = await client.auth.getSession();
   const { data, error } = await client.auth.getUser();
-  if (error || !data.user) {
+  const { data: after } = await client.auth.getSession();
+  if (error || !data.user || (expectedUserId && data.user.id !== expectedUserId) || before.session?.user.id !== data.user.id || after.session?.user.id !== data.user.id) {
     throw new BackendError("NOT_AUTHENTICATED", "Sign in to access your private travel data.", error);
   }
   return data.user;

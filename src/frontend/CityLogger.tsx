@@ -15,6 +15,9 @@ import {
 import { authRedirectUrl, isSupabaseConfigured, supabase } from "../backend/supabase";
 import Onboarding, { type EntryStage } from "./Onboarding";
 import { cleanEmailOtpInput, emailOtpLength } from "./emailVerification";
+import { JournalOperations } from "./journalOperations";
+import { canonicalRanking, reorderVisible } from "./rankingOrder";
+import { guestTransferId, verifyGuestTransfer } from "./guestTransfer";
 import { cityIdentity, latestCities, newestVisits, visitMonth, visitSortDate, visitHistory, GUEST_KEY, ONBOARDING_KEY } from "./journey";
 
 type RatingKey = "personal" | "culture" | "architecture" | "food" | "nature" | "nightlife";
@@ -22,12 +25,14 @@ type Ratings = Record<RatingKey, number | null>;
 type CityId = number | string;
 
 type City = {
+  geonameId?: string | null;
   id: CityId; name: string; country: string; continent: string; lat: number; lng: number;
   rating: number; ratings: Ratings; dateFrom: string; dateTo: string;
   visitType: string; note: string; emoji: string; photoUrl?: string; createdAt?: string;
 };
 
 type CityOption = {
+  geonameId?: string | null;
   id?: string;
   name: string; ascii?: string; country: string; continent: string;
   lat: number; lng: number; emoji: string; population?: number;
@@ -301,7 +306,6 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
   const [guestStorageError, setGuestStorageError] = useState("");
   const signupPending = useRef(false);
   const entryInitialised = useRef(false);
-  const savingVisit = useRef(false);
   const visitOperationId = useRef<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [editingVisitId, setEditingVisitId] = useState<string | null>(null);
@@ -355,6 +359,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
   const [loadRetry, setLoadRetry] = useState(0);
   const loadedUserId = useRef<string | null>(null);
   const syncRequest = useRef(0);
+  const journalOperations = useRef(new JournalOperations());
   const publicPageUrl = (path: string) => nativeMode ? `https://citylogger.app${path}` : path;
   const citySummaries = useMemo(() => latestCities(cities), [cities]);
   const storyHistory = useMemo(() => selected ? visitHistory(cities, selected) : [], [cities, selected]);
@@ -371,12 +376,14 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
   const chronological = useMemo(() => newestVisits(cities), [cities]);
   const datedVisits = chronological.filter(city => city.dateFrom || city.dateTo);
   const undatedVisits = chronological.filter(city => !city.dateFrom && !city.dateTo);
+  const fullRanking = useMemo(() => canonicalRanking(cities, manualOrder), [cities, manualOrder]);
+  const rankingId = (city: City) => fullRanking.find(id => visitHistory(cities, city).some(visit => visit.id === id)) ?? city.id;
   const displayedRanked = useMemo(() => {
     if (!manualOrder) return ranked;
-    const positions = new Map(manualOrder.map((id, index) => [id, index]));
-    const position = (city: City) => Math.min(...visitHistory(cities, city).map(visit => positions.get(visit.id) ?? 999));
+    const positions = new Map(fullRanking.map((id, index) => [id, index]));
+    const position = (city: City) => Math.min(...visitHistory(cities, city).map(visit => positions.get(visit.id) ?? Number.MAX_SAFE_INTEGER));
     return [...ranked].sort((a, b) => position(a) - position(b));
-  }, [ranked, manualOrder, cities]);
+  }, [ranked, manualOrder, cities, fullRanking]);
   const firstCompared = citySummaries.find(city => String(city.id) === String(compareIds[0])) || citySummaries[0];
   const secondCompared = citySummaries.find(city => String(city.id) === String(compareIds[1]) && city.id !== firstCompared?.id)
     || citySummaries.find(city => city.id !== firstCompared?.id);
@@ -469,36 +476,108 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
     setEntryStage("cards");
   }
 
-  async function importGuestJournal() {
-    if (!user || saveBusy) return;
-    setSaveBusy(true); setGuestImportError("");
+  async function runJournalMutation<T>(work: (isCurrent: () => boolean) => Promise<T>, commit: (value: T) => void, onError?: (error: unknown) => void) {
+    if (user && syncStatus === "loading" && !journalOperations.current.busy) {
+      setLoadError("Your journal is still loading. Please wait before making changes.");
+      return false;
+    }
+    const operation = journalOperations.current.begin(user?.id || null);
+    if (!operation) {
+      setLoadError("A change is still saving. Please wait before making another change.");
+      return false;
+    }
+    ++syncRequest.current;
+    setSyncStatus("loading");
+    setSaveBusy(true);
+    setListBusy(true);
+    setLoadError("");
     try {
-      const guest = JSON.parse(localStorage.getItem(GUEST_KEY) || "null") as {cities: City[];wishlist: CityOption[];lists: PersonalList[];manualOrder: CityId[] | null;yearlyGoal: number} | null;
-      if (!guest) return;
-      for (const visit of guest.cities || []) await createVisit(visit as StoredCity, String(visit.id));
-      const importedWishlist = [];
-      for (const city of guest.wishlist || []) importedWishlist.push(await addWishlistCity(city));
-      if (importedWishlist.length) await saveWishlistOrder(importedWishlist.map(city => city.id));
-      for (const [index,list] of (guest.lists || []).entries()) {
-        await createPersonalList(list.title, lists.length + index, String(list.id));
-        await savePersonalListCities(String(list.id), list.cityIds.map(String));
+      const value = await work(operation.isCurrent);
+      if (!operation.isCurrent()) return false;
+      commit(value);
+      setSyncStatus("saved");
+      return true;
+    } catch (error) {
+      if (operation.isCurrent()) {
+        setSyncStatus("error");
+        setLoadError("This change could not be saved. Your last saved data is still available. Please retry.");
+        onError?.(error);
       }
-      if (guest.manualOrder?.length && !manualOrder) await saveRankingOrder(guest.manualOrder.map(String));
-      if (!cities.length) await saveStoredYearlyGoal(guest.yearlyGoal || 10);
-      const [stored,state]=await Promise.all([loadVisits(),loadAppState()]);
-      setCities(stored);setWishlist(state.wishlist);setLists(state.lists);setManualOrder(state.rankingOrder.length?state.rankingOrder:null);setYearlyGoal(state.yearlyGoal);setGoalDraft(String(state.yearlyGoal));
-      localStorage.removeItem(GUEST_KEY);
-      setGuestImportAvailable(false);
-    } catch { setGuestImportError("We couldn't move your guest data yet. It is still on this device; please try again."); }
-    finally {setSaveBusy(false);}
+      return false;
+    } finally {
+      if (operation.isCurrent()) { setSaveBusy(false); setListBusy(false); }
+      operation.finish();
+    }
   }
 
+  async function importGuestJournal() {
+    if (!user || saveBusy) return;
+    setGuestImportError("");
+    const guestSnapshot = localStorage.getItem(GUEST_KEY);
+      await runJournalMutation(async isCurrent => {
+        const check = () => { if (!isCurrent()) throw new Error("Account changed."); };
+        const guest = JSON.parse(guestSnapshot || "null") as { cities: City[]; wishlist: CityOption[]; lists: PersonalList[]; manualOrder: CityId[] | null; yearlyGoal: number } | null;
+        if (!guest) return null;
+        const [existingVisits, existingState] = await Promise.all([loadVisits(user.id), loadAppState(user.id)]);
+        check();
+        const visitIds = new Set(existingVisits.map(visit => visit.id));
+        const idMap = new Map<string, string>();
+        // Save the goal first: a retry after partial visit insertion must not lose it.
+        if (!existingVisits.length) await saveStoredYearlyGoal(guest.yearlyGoal || 10, user.id);
+        for (const visit of guest.cities || []) {
+          check();
+          const id = visitIds.has(String(visit.id)) ? String(visit.id) : await guestTransferId(user.id, "visit", visit.id);
+          idMap.set(String(visit.id), id);
+          check();
+          if (!visitIds.has(id)) { await createVisit(visit as StoredCity, id, user.id); visitIds.add(id); }
+        }
+        const importedWishlist = [...existingState.wishlist];
+        for (const city of guest.wishlist || []) {
+          check();
+          if (!importedWishlist.some(item => cityIdentity(item) === cityIdentity(city))) importedWishlist.push(await addWishlistCity(city, user.id));
+        }
+        check();
+        if (importedWishlist.length) await saveWishlistOrder(importedWishlist.map(city => city.id), user.id);
+        const transferredLists: {id: string; cityIds: string[]}[] = [];
+        for (const [index, list] of (guest.lists || []).entries()) {
+          check();
+          const id = existingState.lists.some(item => item.id === String(list.id)) ? String(list.id) : await guestTransferId(user.id, "list", list.id);
+          check();
+          const existing = existingState.lists.find(item => item.id === id);
+          if (!existing) await createPersonalList(list.title, existingState.lists.length + index, id, user.id);
+          check();
+          const cityIds = [...new Set([...(existing?.cityIds || []), ...list.cityIds.map(id => idMap.get(String(id))).filter((id): id is string => Boolean(id))])];
+          await savePersonalListCities(id, cityIds, user.id);
+          transferredLists.push({id, cityIds});
+        }
+        check();
+        const ranking = [...new Set([...existingState.rankingOrder, ...(guest.manualOrder || []).map(id => idMap.get(String(id))).filter((id): id is string => Boolean(id))])];
+        if (ranking.length) await saveRankingOrder(ranking, user.id);
+        check();
+        const result = await Promise.all([loadVisits(user.id), loadAppState(user.id)]);
+        check();
+        verifyGuestTransfer({visits:[...idMap.values()], lists:transferredLists, wishlist:importedWishlist.map(city => city.id), ranking}, result[0], result[1]);
+        return result;
+      }, result => {
+        if (!result) return;
+        const [stored, state] = result;
+        setCities(stored); setWishlist(state.wishlist); setLists(state.lists);
+        setManualOrder(state.rankingOrder.length ? state.rankingOrder : null);
+        setYearlyGoal(state.yearlyGoal); setGoalDraft(String(state.yearlyGoal));
+        if (localStorage.getItem(GUEST_KEY) === guestSnapshot) {
+          localStorage.removeItem(GUEST_KEY); setGuestImportAvailable(false);
+        } else {
+          setGuestImportError("Your guest journal changed during transfer. Import again to include the new entries.");
+        }
+      }, () => setGuestImportError("We couldn't move your guest data yet. It is still on this device; please try again."));
+  }
   useEffect(() => {
     if (!supabase) {
       setAuthReady(true);
       return;
     }
     supabase.auth.getSession().then(({ data }) => {
+      journalOperations.current.setOwner(data.session?.user.id || null);
       setUser(data.session?.user || null);
       setAuthReady(true);
       const pendingEmail = readPendingSignupEmail();
@@ -517,6 +596,8 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
       }
     }).catch(() => { setAuthReady(true); setAuthMessage("We couldn’t restore your session. Please sign in again."); });
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      journalOperations.current.setOwner(session?.user.id || null);
+      if (event === "SIGNED_OUT") { setAdding(false); setCandidate(null); setEditingVisitId(null); setSaveBusy(false); setListBusy(false); }
       setUser(session?.user || null);
       if (event === "PASSWORD_RECOVERY") {
         setAuthView("reset");
@@ -536,17 +617,19 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
     if (!user) { loadedUserId.current = null; setLoadError(""); return; }
     if (loadedUserId.current !== user.id) {
       loadedUserId.current = user.id;
+      setSaveBusy(false); setListBusy(false); setAdding(false); setCandidate(null); setEditingVisitId(null);
       setCities([]); setSelected(null); setWishlist([]); setLists([]); setManualOrder(null);
       setCompareIds(["", ""]);
       setProfileName(user.user_metadata?.display_name || user.email?.split("@")[0] || "Traveller");
     }
     let active = true;
     const refresh = async () => {
+      if (journalOperations.current.busy) return;
       const requestId = ++syncRequest.current;
       setSyncStatus("loading");
       setLoadError("");
-      const [visitsResult, stateResult] = await Promise.allSettled([loadVisits(), loadAppState()]);
-      if (!active || requestId !== syncRequest.current) return;
+      const [visitsResult, stateResult] = await Promise.allSettled([loadVisits(user.id), loadAppState(user.id)]);
+      if (!active || journalOperations.current.busy || requestId !== syncRequest.current) return;
       if (visitsResult.status === "fulfilled") {
         const stored = visitsResult.value;
         setCities(stored);
@@ -588,7 +671,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
 
     fetch(`/cities/${prefix}.json`, { signal: controller.signal })
       .then(response => response.ok ? response.json() : [])
-      .then((records: [string, string, string, string, number, number, number, string][]) => {
+      .then((records: [string, string, string, string, number, number, number, string, string?][]) => {
         const matchingRecords = records
           .filter(record =>
             normalizeSearch(record[0]).includes(needle) ||
@@ -597,13 +680,14 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
           );
         const uniqueRecords = [...new Map(
           matchingRecords.map(record => [
-            `${normalizeSearch(record[0])}|${normalizeSearch(record[2])}`,
+            record[8] || `${normalizeSearch(record[0])}|${record[2]}|${record[4]}|${record[5]}`,
             record
           ])
         ).values()];
         const matches = uniqueRecords
           .slice(0, 12)
           .map(record => ({
+            geonameId: record[8] || null,
             name: record[0],
             ascii: record[1],
             country: record[2],
@@ -648,7 +732,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
   }
 
   function closeVisitEditor() {
-    if (savingVisit.current) return;
+    if (journalOperations.current.busy) return;
     setAdding(false);
     setEditingVisitId(null);
   }
@@ -659,6 +743,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
     setEditingVisitId(String(selected.id));
     setEditorReturnTab(tab === "city" ? "city" : "map");
     setCandidate({
+      geonameId: selected.geonameId,
       name: selected.name,
       country: selected.country,
       continent: selected.continent,
@@ -679,59 +764,27 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
   async function saveYearlyGoal() {
     const nextGoal = Math.min(999, Math.max(1, Math.round(Number(goalDraft))));
     if (!Number.isFinite(nextGoal)) return;
-    setYearlyGoal(nextGoal);
-    setGoalDraft(String(nextGoal));
-    setEditingGoal(false);
-    if (!user) {
-      return;
-    }
-    try {
-      await saveStoredYearlyGoal(nextGoal);
-      setSyncStatus("saved");
-      window.setTimeout(() => setSyncStatus("idle"), 1800);
-    } catch {
-      setSyncStatus("error");
-    }
+    await runJournalMutation(async () => { if (user) await saveStoredYearlyGoal(nextGoal, user.id); }, () => {
+      setYearlyGoal(nextGoal); setGoalDraft(String(nextGoal)); setEditingGoal(false);
+    });
   }
-
   async function saveCity() {
-    if (savingVisit.current || !candidate || !requiredRatingsComplete || invalidDateRange) return;
-    savingVisit.current = true; setSaveBusy(true); setSaveError("");
-    const draftCity = {
-      ...candidate,
-      rating: draftOverall,
-      ratings: draftRatings,
-      dateFrom,
-      dateTo,
-      visitType,
-      note
-    };
-    setSyncStatus("loading");
-    try {
-      const operationId = visitOperationId.current || (visitOperationId.current = crypto.randomUUID());
-      const savedCity = !user ? { ...draftCity, id: editingVisitId || operationId, createdAt: editingVisitId ? cities.find(city=>String(city.id)===editingVisitId)?.createdAt : new Date().toISOString() } : editingVisitId
-        ? await updateVisit({ ...draftCity, id: editingVisitId } as StoredCity)
-        : await createVisit(draftCity as Omit<StoredCity, "id">, operationId);
-      if (editingVisitId) {
-        setCities(current => current.map(city => String(city.id) === editingVisitId ? savedCity : city));
-      } else {
-        setCities(current => [savedCity, ...current]);
-      }
-      setSelected(savedCity);
-      setAdding(false);
-      setCandidate(null);
-      setQuery("");
-      setTab(editingVisitId ? editorReturnTab : "map");
-      setEditingVisitId(null);
-      setSyncStatus("saved");
-      window.setTimeout(() => setSyncStatus("idle"), 1800);
-    } catch (error) {
-      setSyncStatus("error");
-      setSaveError(error instanceof Error ? error.message : "The visit could not be saved.");
-    } finally { savingVisit.current = false; setSaveBusy(false); }
+    if (saveBusy || !candidate || !requiredRatingsComplete || invalidDateRange) return;
+    setSaveError("");
+    const draftCity = { ...candidate, rating: draftOverall, ratings: draftRatings, dateFrom, dateTo, visitType, note };
+      await runJournalMutation(async () => {
+        const operationId = visitOperationId.current || (visitOperationId.current = crypto.randomUUID());
+        return !user ? { ...draftCity, id: editingVisitId || operationId, createdAt: editingVisitId ? cities.find(city => String(city.id) === editingVisitId)?.createdAt : new Date().toISOString() }
+          : editingVisitId ? await updateVisit({ ...draftCity, id: editingVisitId } as StoredCity, user.id)
+          : await createVisit(draftCity as Omit<StoredCity, "id">, operationId, user.id);
+      }, savedCity => {
+        setCities(current => editingVisitId ? current.map(city => String(city.id) === editingVisitId ? savedCity : city) : [savedCity, ...current]);
+        setSelected(savedCity); setAdding(false); setCandidate(null); setQuery("");
+        setTab(editingVisitId ? editorReturnTab : "map"); setEditingVisitId(null);
+      }, error => setSaveError(error instanceof Error ? error.message : "The visit could not be saved."));
   }
-
   async function submitAuth() {
+    if (authBusy) return;
     if (!supabase) {
       setAuthMessage("Account services are temporarily unavailable. You can continue as a guest and try again later.");
       return;
@@ -838,120 +891,77 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
 
   async function exportMyData() {
     if (!user) return;
-    setSyncStatus("loading");
-    try {
-      const payload = await downloadAccountData();
+    await runJournalMutation(async () => downloadAccountData(), payload => {
       const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
       const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = `citylog-data-${new Date().toISOString().slice(0, 10)}.json`;
-      anchor.click();
-      URL.revokeObjectURL(url);
-      setSyncStatus("idle");
-    } catch {
-      setSyncStatus("error");
-    }
+      anchor.href = url; anchor.download = `citylog-data-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(anchor); anchor.click(); anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+    });
   }
-
   async function removeAccount() {
     if (!supabase || !user) return;
-    const confirmed = window.confirm("Permanently delete your account, visits, ratings and notes? This cannot be undone.");
-    if (!confirmed) return;
-    setSyncStatus("loading");
-    const { error } = await supabase.functions.invoke("delete-account", { method: "POST" });
-    if (error) {
-      setSyncStatus("error");
-      setAuthMessage(error.message);
-      return;
-    }
-    await supabase.auth.signOut();
-    restoreGuest();
-    setTab("map");
-    setSyncStatus("idle");
+    if (!window.confirm("Permanently delete your account, visits, ratings and notes? This cannot be undone.")) return;
+    const client = supabase;
+    await runJournalMutation(async isCurrent => {
+      const { data: { session } } = await client.auth.getSession();
+      if (!isCurrent() || !session || session.user.id !== user.id) throw new Error("Account changed.");
+      const { data, error } = await client.functions.invoke("delete-account", { method: "POST", headers: { Authorization: `Bearer ${session.access_token}` } });
+      if (error || !data?.deleted) throw error || new Error("Account deletion did not complete.");
+      if (isCurrent()) await client.auth.signOut();
+    }, () => {}, () => setAuthMessage("Could not delete your account. Please retry or contact support."));
   }
-
   async function removeSelectedVisit() {
-    if (!selected) return;
-    if (!window.confirm(`Delete this visit to ${selected.name}? Other visits will be kept.`)) return;
-    setSyncStatus("loading");
-    try {
-      const deletion = user ? await deleteVisit(String(selected.id)) : null;
+    if (!selected || !window.confirm(`Delete this visit to ${selected.name}? Other visits will be kept.`)) return;
+    const replacement = storyHistory.find(city => city.id !== selected.id);
+    const nextOrder = manualOrder ? fullRanking.flatMap(id => id !== selected.id ? [id] : replacement ? [replacement.id] : []) : null;
+    await runJournalMutation(async isCurrent => {
+      if (!user) return null;
+      // Transfer the representative before deletion; a failed deletion cannot lose its slot.
+      if (nextOrder) await saveRankingOrder(nextOrder.map(String), user.id);
+      if (!isCurrent()) throw new Error("Account changed.");
+      return deleteVisit(String(selected.id), user.id);
+    }, deletion => {
       setCities(current => current.filter(city => city.id !== selected.id));
       const remaining = storyHistory.filter(city => city.id !== selected.id);
       setSelected(remaining[0] || null);
-      setLists(current => current.map(list => ({...list,cityIds:list.cityIds.filter(id=>id!==selected.id)})));
-      setManualOrder(current => current?.filter(id=>id!==selected.id) || null);
+      setLists(current => current.map(list => ({ ...list, cityIds: list.cityIds.filter(id => id !== selected.id) })));
+      setManualOrder(nextOrder);
       if (tab === "city" && !remaining.length) setTab("log");
       if (deletion?.cleanupPending) setCleanupWarning("Visit deleted, but an older photograph could not be cleaned up. Please contact support.");
-      setSyncStatus("idle");
-    } catch {
-      setSyncStatus("error");
-    }
+    });
   }
-
   async function addWantToVisit(city: CityOption) {
-    const existing = wishlist.find(item => item.name === city.name && item.country === city.country);
-    if (!user) {
-      setWishlist(current => existing ? current.filter(item => cityIdentity(item) !== cityIdentity(city)) : [...current,{...city,id:crypto.randomUUID()}]);
-      return;
-    }
-    setSyncStatus("loading");
-    try {
-      if (existing) {
-        await removeWishlistCity({ id: existing.id || "", name: existing.name, country: existing.country });
-        setWishlist(current => current.filter(item => !(item.name === city.name && item.country === city.country)));
-      } else {
-        const saved = await addWishlistCity(city);
-        setWishlist(current => [...current, saved]);
-      }
-      setSyncStatus("saved");
-      window.setTimeout(() => setSyncStatus("idle"), 1800);
-    } catch {
-      setSyncStatus("error");
-    }
+    const existing = wishlist.find(item => cityIdentity(item) === cityIdentity(city));
+    await runJournalMutation(async () => {
+      if (existing) { if (user) await removeWishlistCity({ id: existing.id || "", name: existing.name, country: existing.country }, user.id); return null; }
+      return user ? await addWishlistCity(city, user.id) : { ...city, id: crypto.randomUUID() };
+    }, saved => setWishlist(current => saved ? [...current, saved] : current.filter(item => cityIdentity(item) !== cityIdentity(city))));
   }
-
   async function reorderRanking(targetId: CityId) {
     if (draggedCity === null || draggedCity === targetId) return;
-    const order = displayedRanked.map(city => city.id);
-    const from = order.indexOf(draggedCity);
-    const to = order.indexOf(targetId);
-    order.splice(to, 0, order.splice(from, 1)[0]);
-    setManualOrder(order);
+    const source = cities.find(city => city.id === draggedCity), target = cities.find(city => city.id === targetId);
+    if (!source || !target) return;
+    const order = reorderVisible(fullRanking, displayedRanked.map(rankingId), rankingId(source), rankingId(target));
     setDraggedCity(null);
-    if (user) {
-      try {
-        await saveRankingOrder(order.map(String));
-      } catch {
-        setSyncStatus("error");
-      }
-    }
+    await runJournalMutation(async () => { if (user) await saveRankingOrder(order.map(String), user.id); }, () => setManualOrder(order));
   }
-
   async function moveRankedCity(cityId: CityId, direction: -1 | 1) {
-    const order = displayedRanked.map(city => city.id);
-    const index = order.indexOf(cityId);
-    const next = index + direction;
-    if (index < 0 || next < 0 || next >= order.length) return;
-    [order[index], order[next]] = [order[next], order[index]];
-    setManualOrder(order);
-    if (user) try { await saveRankingOrder(order.map(String)); } catch { setSyncStatus("error"); }
+    const visible = displayedRanked.map(rankingId);
+    const city = cities.find(item => item.id === cityId);
+    if (!city) return;
+    const index = visible.indexOf(rankingId(city)), next = index + direction;
+    if (index < 0 || next < 0 || next >= visible.length) return;
+    const order = reorderVisible(fullRanking, visible, visible[index], visible[next]);
+    await runJournalMutation(async () => { if (user) await saveRankingOrder(order.map(String), user.id); }, () => setManualOrder(order));
   }
-
   async function moveWishlistCity(city: CityOption, direction: -1 | 1) {
-    const index = wishlist.findIndex(item => cityIdentity(item) === cityIdentity(city));
-    const next = index + direction;
+    const index = wishlist.findIndex(item => cityIdentity(item) === cityIdentity(city)), next = index + direction;
     if (index < 0 || next < 0 || next >= wishlist.length) return;
-    const previous = wishlist;
     const ordered = [...wishlist];
     [ordered[index], ordered[next]] = [ordered[next], ordered[index]];
-    setWishlist(ordered);
-    if (user) {
-      try { await saveWishlistOrder(ordered.map(city => String(city.id))); }
-      catch { setWishlist(previous); setSyncStatus("error"); }
-    }
+    await runJournalMutation(async () => { if (user) await saveWishlistOrder(ordered.map(city => String(city.id)), user.id); }, () => setWishlist(ordered));
   }
-
   function selectComparedCity(index: 0 | 1, cityId: string) {
     const next: [CityId, CityId] = [compared[0]?.id || "", compared[1]?.id || ""];
     if (String(next[1 - index]) === cityId) next[1 - index] = next[index];
@@ -962,23 +972,10 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
   async function createList() {
     const title = newListTitle.trim();
     if (!title) return;
-    if (!user) {
-      setLists(current => [...current,{id:crypto.randomUUID(),title,cityIds:[]}]);
-      setNewListTitle("");
-      return;
-    }
-    setSyncStatus("loading");
-    try {
-      const saved = await createPersonalList(title, lists.length);
-      setLists(current => [...current, saved]);
-      setNewListTitle("");
-      setSyncStatus("saved");
-      window.setTimeout(() => setSyncStatus("idle"), 1800);
-    } catch {
-      setSyncStatus("error");
-    }
+    await runJournalMutation(async () => user ? await createPersonalList(title, lists.length, undefined, user.id) : { id: crypto.randomUUID(), title, cityIds: [] }, saved => {
+      setLists(current => [...current, saved]); setNewListTitle("");
+    });
   }
-
   function startEditingList(list: PersonalList) {
     setEditingListId(list.id);
     setListTitleDraft(list.title);
@@ -987,84 +984,45 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
 
   async function saveListTitle(listId: CityId) {
     const title = listTitleDraft.trim();
-    if (!title || title.length > 100) {
-      setListEditError("Choose a title between 1 and 100 characters.");
-      return;
-    }
-    setListBusy(true);
-    setListEditError("");
-    try {
-      if (user) await renamePersonalList(String(listId), title);
-      setLists(current => current.map(list => list.id === listId ? { ...list, title } : list));
-      setEditingListId(null);
-    } catch (error) {
-      setListEditError(error instanceof Error ? error.message : "Could not rename this list.");
-    } finally {
-      setListBusy(false);
-    }
+    if (!title || title.length > 100) { setListEditError("Choose a title between 1 and 100 characters."); return; }
+    await runJournalMutation(async () => { if (user) await renamePersonalList(String(listId), title, user.id); }, () => {
+      setLists(current => current.map(list => list.id === listId ? { ...list, title } : list)); setEditingListId(null); setListEditError("");
+    }, error => setListEditError(error instanceof Error ? error.message : "Could not rename this list."));
   }
-
   async function removeList(list: PersonalList) {
     if (!window.confirm(`Delete “${list.title}”? The cities and visits in it will be kept.`)) return;
-    setListBusy(true);
-    setListEditError("");
-    try {
-      if (user) await deletePersonalList(String(list.id));
-      setLists(current => current.filter(item => item.id !== list.id));
-      setEditingListId(null);
-    } catch (error) {
-      setListEditError(error instanceof Error ? error.message : "Could not delete this list.");
-    } finally {
-      setListBusy(false);
-    }
+    await runJournalMutation(async () => { if (user) await deletePersonalList(String(list.id), user.id); }, () => {
+      setLists(current => current.filter(item => item.id !== list.id)); setEditingListId(null); setListEditError("");
+    }, () => setListEditError("Could not delete this list."));
   }
-
   async function removeCityFromList(list: PersonalList, cityId: CityId) {
     const cityIds = list.cityIds.filter(id => id !== cityId);
-    setListBusy(true);
-    setListEditError("");
-    try {
-      if (user) await savePersonalListCities(String(list.id), cityIds.map(String));
-      setLists(current => current.map(item => item.id === list.id ? { ...item, cityIds } : item));
-    } catch (error) {
-      setListEditError(error instanceof Error ? error.message : "Could not remove this city from the list.");
-    } finally {
-      setListBusy(false);
-    }
+    await runJournalMutation(async () => { if (user) await savePersonalListCities(String(list.id), cityIds.map(String), user.id); }, () => {
+      setLists(current => current.map(item => item.id === list.id ? { ...item, cityIds } : item)); setListEditError("");
+    }, () => setListEditError("Could not remove this city from the list."));
   }
-
   async function moveListCity(listId: CityId, cityId: CityId, direction: -1 | 1) {
-    const nextLists = lists.map(list => {
-      if (list.id !== listId) return list;
-      const cityIds = [...list.cityIds];
-      const index = cityIds.indexOf(cityId);
-      const next = index + direction;
-      if (next < 0 || next >= cityIds.length) return list;
-      [cityIds[index], cityIds[next]] = [cityIds[next], cityIds[index]];
-      return { ...list, cityIds };
+    const list = lists.find(item => item.id === listId);
+    if (!list) return;
+    const cityIds = [...list.cityIds], index = cityIds.indexOf(cityId), next = index + direction;
+    if (index < 0 || next < 0 || next >= cityIds.length) return;
+    [cityIds[index], cityIds[next]] = [cityIds[next], cityIds[index]];
+    await runJournalMutation(async () => { if (user) await savePersonalListCities(String(listId), cityIds.map(String), user.id); }, () => {
+      setLists(current => current.map(item => item.id === listId ? { ...item, cityIds } : item));
     });
-    setLists(nextLists);
-    if (user && typeof listId === "string") {
-      const list = nextLists.find(item => item.id === listId);
-      if (list) try { await savePersonalListCities(listId, list.cityIds.map(String)); } catch { setSyncStatus("error"); }
-    }
   }
-
   async function addCityToList(listId: CityId, cityId: CityId) {
-    const nextLists = lists.map(list => list.id === listId && !list.cityIds.includes(cityId) ? { ...list, cityIds: [...list.cityIds, cityId] } : list);
-    setLists(nextLists);
-    if (user && typeof listId === "string") {
-      const list = nextLists.find(item => item.id === listId);
-      if (list) try { await savePersonalListCities(listId, list.cityIds.map(String)); } catch { setSyncStatus("error"); }
-    }
+    const list = lists.find(item => item.id === listId);
+    if (!list || list.cityIds.includes(cityId)) return;
+    const cityIds = [...list.cityIds, cityId];
+    await runJournalMutation(async () => { if (user) await savePersonalListCities(String(listId), cityIds.map(String), user.id); }, () => {
+      setLists(current => current.map(item => item.id === listId ? { ...item, cityIds } : item));
+    });
   }
-
   async function toggleManualOrder() {
-    const next = manualOrder ? null : displayedRanked.map(city => city.id);
-    setManualOrder(next);
-    if (user) try { await saveRankingOrder(next ? next.map(String) : []); } catch { setSyncStatus("error"); }
+    const next = manualOrder ? null : fullRanking;
+    await runJournalMutation(async () => { if (user) await saveRankingOrder(next ? next.map(String) : [], user.id); }, () => setManualOrder(next));
   }
-
   return (
     <main className={`app-shell view-${tab} ${entryStage !== "done" ? "entry-active" : ""} ${adding ? "editor-open" : ""}`}>
       <div className="product-layer" inert={entryStage !== "done" || authOpen || adding} aria-hidden={entryStage !== "done" || undefined}>
@@ -1252,7 +1210,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
               <div className="section-heading lists-intro"><span><ListPlus/></span><div><p className="kicker">MY LISTS</p><h2>Your collections</h2></div></div>
               <article className="personal-list want-list">
                 <div><span className="list-icon"><Heart fill="currentColor"/></span><span className="collection-title"><h3>Want to Visit</h3><small>{wishlist.length} saved cities</small></span><span className="collection-header-actions"><button className="native-only want-add-city" onClick={openAddCity}><Plus/>Add city</button><button className="collection-edit-toggle" aria-label={wishlistEditMode ? "Done editing Want to Visit" : "Edit Want to Visit"} aria-pressed={wishlistEditMode} onClick={() => setWishlistEditMode(value => !value)}>{wishlistEditMode ? <span>Done</span> : <MoreHorizontal/>}</button></span></div>
-                <div className="list-cities">{(showAllWishlist || wishlistEditMode ? wishlist : wishlist.slice(0, 6)).map((city, index) => <span key={`${city.name}-${city.country}`}><b>{index + 1}</b><span className="list-city-name"><FlagMark emoji={city.emoji} country={city.country} className="list-flag"/>{city.name}</span>{wishlistEditMode && <><span className="list-order"><button disabled={index === 0} aria-label={`Move ${city.name} higher on Want to Visit`} onClick={() => moveWishlistCity(city, -1)}><ArrowUp/></button><button disabled={index === wishlist.length - 1} aria-label={`Move ${city.name} lower on Want to Visit`} onClick={() => moveWishlistCity(city, 1)}><ArrowDown/></button></span><button aria-label={`Remove ${city.name}`} onClick={() => addWantToVisit(city)}><X/></button></>}</span>)}</div>
+                <div className="list-cities">{(showAllWishlist || wishlistEditMode ? wishlist : wishlist.slice(0, 6)).map((city, index) => <span key={city.id || cityIdentity(city)}><b>{index + 1}</b><span className="list-city-name"><FlagMark emoji={city.emoji} country={city.country} className="list-flag"/>{city.name}</span>{wishlistEditMode && <><span className="list-order"><button disabled={index === 0} aria-label={`Move ${city.name} higher on Want to Visit`} onClick={() => moveWishlistCity(city, -1)}><ArrowUp/></button><button disabled={index === wishlist.length - 1} aria-label={`Move ${city.name} lower on Want to Visit`} onClick={() => moveWishlistCity(city, 1)}><ArrowDown/></button></span><button aria-label={`Remove ${city.name}`} onClick={() => addWantToVisit(city)}><X/></button></>}</span>)}</div>
                 {wishlist.length > 6 && !wishlistEditMode && <button className="wishlist-more" onClick={() => setShowAllWishlist(value => !value)}>{showAllWishlist ? "Show fewer" : `View all ${wishlist.length} cities`}<ChevronDown className={showAllWishlist ? "up" : ""}/></button>}
               </article>
               {lists.map(list => (
@@ -1390,9 +1348,9 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
                 <p className="section-label">{query ? searching ? "SEARCHING 234,000+ CITIES…" : "SEARCH RESULTS" : "SUGGESTED FOR YOU"}</p>
                 <div className="suggestions">
                   {searchResults.map(city => (
-                    <div className="suggestion-row" key={`${city.name}-${city.country}-${city.lat}`}>
+                    <div className="suggestion-row" key={cityIdentity(city)}>
                       <button className="city-result" onClick={() => beginAdd(city)}><FlagMark emoji={city.emoji} country={city.country}/><span><strong>{city.name}</strong><small>{city.country} · {city.continent}{city.population ? ` · ${city.population.toLocaleString()} people` : ""}</small></span><Plus/></button>
-                      <button className={`want-btn ${wishlist.some(item => item.name === city.name && item.country === city.country) ? "saved" : ""}`} onClick={() => addWantToVisit(city)} aria-label={`${wishlist.some(item => item.name === city.name && item.country === city.country) ? "Remove" : "Add"} ${city.name} ${wishlist.some(item => item.name === city.name && item.country === city.country) ? "from" : "to"} Want to Visit`}><Heart fill={wishlist.some(item => item.name === city.name && item.country === city.country) ? "currentColor" : "none"}/></button>
+                      <button className={`want-btn ${wishlist.some(item => cityIdentity(item) === cityIdentity(city)) ? "saved" : ""}`} onClick={() => addWantToVisit(city)} aria-label={`${wishlist.some(item => cityIdentity(item) === cityIdentity(city)) ? "Remove" : "Add"} ${city.name} ${wishlist.some(item => cityIdentity(item) === cityIdentity(city)) ? "from" : "to"} Want to Visit`}><Heart fill={wishlist.some(item => cityIdentity(item) === cityIdentity(city)) ? "currentColor" : "none"}/></button>
                     </div>
                   ))}
                   {!searching && query.length >= 2 && searchResults.length === 0 && <div className="empty-search">No matching city found. Try another spelling.</div>}
@@ -1465,7 +1423,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
               <p className="kicker">{authView === "signup" ? "CREATE ACCOUNT" : authView === "signin" ? "WELCOME BACK" : authView === "forgot" ? "RESET PASSWORD" : "CHOOSE A NEW PASSWORD"}</p>
               <h2 id="auth-title">{authView === "signup" ? "Start your private travel log." : authView === "signin" ? "Sign in to CityLog." : authView === "forgot" ? "Check your inbox next." : "Secure your account."}</h2>
               <form onSubmit={event => { event.preventDefault(); void submitAuth(); }}>
-                {authView === "signup" && <label className="auth-field"><span>Display name <small>OPTIONAL</small></span><input value={authName} onChange={event => setAuthName(event.target.value)} autoComplete="name"/></label>}
+                {authView === "signup" && <label className="auth-field"><span>Display name <small>OPTIONAL</small></span><input maxLength={80} value={authName} onChange={event => setAuthName(event.target.value)} autoComplete="name"/></label>}
                 {authView !== "reset" && <label className="auth-field"><span>Email</span><input type="email" value={authEmail} onChange={event => setAuthEmail(event.target.value)} autoComplete="email" required/></label>}
                 {authView !== "forgot" && <label className="auth-field"><span>Password</span><input type="password" minLength={8} value={authPassword} onChange={event => setAuthPassword(event.target.value)} autoComplete={authView === "signin" ? "current-password" : "new-password"} required/></label>}
                 {authMessage && <p className="auth-message" role="status">{authMessage}</p>}

@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, json } from "../_shared/cors.ts";
+import { cleanupPhotos } from "../_shared/photo-cleanup.ts";
 
 Deno.serve(async (request: Request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -18,15 +19,14 @@ Deno.serve(async (request: Request) => {
   const { data: { user }, error: userError } = await caller.auth.getUser();
   if (userError || !user) return json({ error: "Invalid session" }, 401);
 
-  const { data: photographRows, error: photographError } = await admin
-    .from("visit_photographs")
-    .select("storage_path")
-    .eq("user_id", user.id);
-  if (photographError) return json({ error: "Could not list photographs" }, 500);
-  if (photographRows?.length) {
-    const paths = photographRows.map((row: { storage_path: string }) => row.storage_path);
-    const { error } = await admin.storage.from("visit-photos").remove(paths);
-    if (error) return json({ error: "Could not delete photographs" }, 500);
+  try {
+    await cleanupPhotos(
+      (from, to) => admin.from("visit_photographs").select("storage_path").eq("user_id", user.id).order("id").range(from, to),
+      paths => admin.storage.from("visit-photos").remove(paths),
+      user.id
+    );
+  } catch {
+    return json({ error: "Could not safely delete photographs; please retry or contact support" }, 503);
   }
 
   const { error: deleteError } = await admin.auth.admin.deleteUser(user.id);

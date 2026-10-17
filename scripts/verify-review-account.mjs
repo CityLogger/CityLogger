@@ -27,7 +27,7 @@ const result = {
   yearly_goal: profile.data.yearly_goal,
   ranking_entries: profile.data.ranking_order?.length || 0,
   visits: visits.data?.length || 0,
-  current_year_visits: visits.data?.filter(visit => visit.date_from.startsWith(`${new Date().getFullYear()}-`)).length || 0,
+  current_year_visits: visits.data?.filter(visit => visit.date_from?.startsWith(`${new Date().getFullYear()}-`)).length || 0,
   want_to_visit: wishlist.data?.length || 0,
   personal_lists: lists.data?.length || 0,
   personal_list_entries: listCities.data?.length || 0

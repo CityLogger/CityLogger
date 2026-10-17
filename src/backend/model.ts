@@ -1,4 +1,5 @@
 export type StoredCity = {
+  geonameId?: string | null;
   id: string;
   name: string;
   country: string;
@@ -24,6 +25,7 @@ export type StoredCity = {
 };
 
 export type VisitRow = {
+  geoname_id?: string | null;
   id: string;
   city_name: string;
   country: string;
@@ -53,6 +55,7 @@ export function calculateStoredOverall(ratings: StoredCity["ratings"]) {
 }
 
 export function validateVisit(city: Omit<StoredCity, "id">) {
+  if (city.geonameId && !/^[1-9][0-9]*$/.test(city.geonameId)) return "This city's geographic identifier is invalid.";
   if (!city.name.trim() || !city.country.trim() || !city.continent.trim()) return "City location details are required.";
   if (!Number.isFinite(city.lat) || city.lat < -90 || city.lat > 90 || !Number.isFinite(city.lng) || city.lng < -180 || city.lng > 180) return "City coordinates are invalid.";
   for (const date of [city.dateFrom, city.dateTo]) {
@@ -68,6 +71,7 @@ export function validateVisit(city: Omit<StoredCity, "id">) {
 }
 
 export const fromVisitRow = (row: VisitRow): StoredCity => ({
+  ...(row.geoname_id ? { geonameId: row.geoname_id } : {}),
   id: row.id,
   name: row.city_name,
   country: row.country,
@@ -92,6 +96,7 @@ export const fromVisitRow = (row: VisitRow): StoredCity => ({
 });
 
 export const toVisitRow = (city: Omit<StoredCity, "id">, userId: string, id: string) => ({
+  ...(city.geonameId ? { geoname_id: city.geonameId } : {}),
   id,
   user_id: userId,
   city_name: city.name.trim(),

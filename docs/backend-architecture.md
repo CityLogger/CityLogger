@@ -14,18 +14,26 @@
 - `src/backend/client.ts`: configured client access and verified current-user lookup.
 - `src/backend/model.ts`: domain/database types, explicit field mapping, and validation.
 - `src/backend/visits.ts`: visit queries and retry-safe mutations.
-- `src/backend/photos.ts`: dormant legacy photograph helper retained for a possible future reintroduction.
+- `src/backend/preferences.ts`: profile preferences, wishlist and personal-list persistence.
+- `src/backend/pagination.ts`: shared paginated reads for visits, collections and exports.
 - `src/backend/account.ts`: current-user-only export.
-- `src/backend/errors.ts`: stable error codes and user-safe messages.
+- `src/backend/errors.ts`: stable error codes; some underlying database messages are still passed through (see the backend review).
+- `supabase/functions/_shared/photo-cleanup.ts`: paginated legacy-photo cleanup with account/path ownership checks and bounded removal batches.
 - `src/backend/index.ts`: narrow public API used by the frontend.
 
 ## Reliability behavior
 
 - New visits receive a client-generated UUID and use an idempotent upsert, so retrying the same operation does not duplicate it.
 - Visit queries list explicit columns to prevent accidental data exposure and schema coupling.
-- Foreground refreshes use a sequence guard so an older request cannot overwrite newer state.
+- Foreground refreshes use a sequence guard and defer while a journal write is active. Mutations invalidate older refresh responses.
+- `JournalOperations` permits one journal mutation at a time, rejects stale account handlers, and prevents a previous account's completion from committing UI state. Ranked/list changes are committed only after a successful save.
 - Database `updated_at` values are maintained by triggers.
 - Deletion functions verify the JWT and derive the user from that session; neither accepts an arbitrary user ID.
+- Before privileged storage deletion, every metadata path must match the authenticated user's storage prefix, and visit deletion also checks the visit prefix. Invalid paths stop deletion.
+
+## Audit status
+
+See `docs/backend-review-2026-10-17.md` for verified local checks, remaining risks and deployment requirements. Repository migrations and Edge Function source are not proof of the deployed database/function versions.
 
 ## Deployment order
 

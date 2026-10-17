@@ -14,21 +14,22 @@
     "review:verify": "node scripts/verify-review-account.mjs",
     "release:check": "node scripts/check-release-readiness.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:rls": "node scripts/test-rls.mjs"
   },
   "dependencies": {
     "@capacitor/app": "^8.1.1",
-    "@capacitor/core": "^8.4.2",
-    "@capacitor/ios": "^8.4.2",
+    "@capacitor/core": "^8.4.3",
+    "@capacitor/ios": "^8.4.3",
     "@supabase/supabase-js": "^2.110.7",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.468.0",
-    "next": "16.2.6",
-    "react": "19.2.6",
-    "react-dom": "19.2.6"
+    "next": "16.3.8",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
   },
   "devDependencies": {
-    "@capacitor/cli": "^8.4.2",
+    "@capacitor/cli": "^8.4.3",
     "@cloudflare/vite-plugin": "1.37.1",
     "@types/leaflet": "^1.9.21",
     "@types/node": "22.19.19",
@@ -36,12 +37,12 @@
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.2",
     "@vitejs/plugin-rsc": "0.5.26",
-    "react-server-dom-webpack": "19.2.6",
+    "react-server-dom-webpack": "19.2.8",
     "supabase": "^2.109.1",
     "typescript": "5.9.3",
     "vinext": "0.0.50",
-    "vite": "8.0.13",
-    "vitest": "^4.1.10",
+    "vite": "8.0.16",
+    "vitest": "^4.1.11",
     "wrangler": "4.92.0"
   }
 }

@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, json } from "../_shared/cors.ts";
+import { cleanupPhotos, validVisitId } from "../_shared/photo-cleanup.ts";
 
 Deno.serve(async (request: Request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -18,27 +19,28 @@ Deno.serve(async (request: Request) => {
   const { data: { user }, error: userError } = await caller.auth.getUser();
   if (userError || !user) return json({ error: "Invalid session" }, 401);
 
-  let payload: { visit_id?: string };
+  let payload: unknown;
   try {
     payload = await request.json();
   } catch {
     return json({ error: "Invalid request body" }, 400);
   }
-  if (!payload.visit_id) return json({ error: "visit_id is required" }, 400);
+  const visitId = validVisitId(payload);
+  if (!visitId) return json({ error: "A valid visit_id is required" }, 400);
 
-  const { data: visit, error: visitReadError } = await admin.from("visits").select("id").eq("id", payload.visit_id).eq("user_id", user.id).maybeSingle();
+  const { data: visit, error: visitReadError } = await admin.from("visits").select("id").eq("id", visitId).eq("user_id", user.id).maybeSingle();
   if (visitReadError) return json({ error: "Could not inspect visit" }, 500);
   if (!visit) return json({ error: "Visit not found" }, 404);
 
-  const { data: photographs, error: photoReadError } = await admin
-    .from("visit_photographs").select("storage_path").eq("visit_id", visit.id).eq("user_id", user.id);
-  if (photoReadError) return json({ error: "Could not inspect attached photographs" }, 500);
-
-  const paths = (photographs || []).map((row: { storage_path: string }) => row.storage_path);
-  if (paths.length) {
-    const { error: storageError } = await admin.storage.from("visit-photos").remove(paths);
-    // Keep the visit and its photo records so cleanup can be retried.
-    if (storageError) return json({ error: "Could not remove attached photographs; visit was not deleted" }, 503);
+  try {
+    await cleanupPhotos(
+      (from, to) => admin.from("visit_photographs").select("storage_path").eq("visit_id", visit.id).eq("user_id", user.id).order("id").range(from, to),
+      paths => admin.storage.from("visit-photos").remove(paths),
+      user.id,
+      visit.id
+    );
+  } catch {
+    return json({ error: "Could not safely remove photographs; visit was not deleted. Please retry or contact support" }, 503);
   }
 
   const { error: deleteError } = await admin.from("visits").delete().eq("id", visit.id).eq("user_id", user.id);
