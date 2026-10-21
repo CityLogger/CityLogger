@@ -2,6 +2,19 @@ import { cityIdentity, latestCities } from "./journey";
 
 type RankedVisit = Parameters<typeof latestCities>[0][number] & { rating: number };
 
+/** One linear lookup build replaces history scans inside sorting and row actions. */
+export function rankingIndex<T extends RankedVisit>(visits: T[], order: (string | number)[]) {
+  const byId = new Map(visits.map(visit => [String(visit.id), visit]));
+  const index = new Map<string, { id: string | number; position: number }>();
+  order.forEach((id, position) => {
+    const visit = byId.get(String(id));
+    if (!visit) return;
+    const identity = cityIdentity(visit);
+    if (!index.has(identity)) index.set(identity, { id: visit.id, position });
+  });
+  return index;
+}
+
 /** Keep historical representative UUIDs so logging another visit does not move a city. */
 export function canonicalRanking<T extends RankedVisit>(visits: T[], saved: (string | number)[] | null) {
   const byId = new Map(visits.map(visit => [String(visit.id), visit]));

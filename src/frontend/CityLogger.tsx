@@ -15,30 +15,16 @@ import {
 import { authRedirectUrl, isSupabaseConfigured, supabase } from "../backend/supabase";
 import Onboarding, { type EntryStage } from "./Onboarding";
 import { cleanEmailOtpInput, emailOtpLength } from "./emailVerification";
-import { JournalOperations } from "./journalOperations";
-import { canonicalRanking, reorderVisible } from "./rankingOrder";
-import { guestTransferId, verifyGuestTransfer } from "./guestTransfer";
+import { searchCities } from "./citySearch";
+import { BackendError } from "../backend/errors";
+import { authFeedback } from "./authFeedback";
+import InteractiveMap from "./InteractiveMap";
+import type { City, CityId, CityOption, PersonalList, RatingKey, Ratings } from "./types";
+import { colorForScore, scoreFor, calculateOverall } from "./ratings";
+import { CreationAttempt, JournalOperations } from "./journalOperations";
+import { canonicalRanking, rankingIndex, reorderVisible } from "./rankingOrder";
+import { transferGuestJournal } from "./importGuestJournal";
 import { cityIdentity, latestCities, newestVisits, visitMonth, visitSortDate, visitHistory, GUEST_KEY, ONBOARDING_KEY } from "./journey";
-
-type RatingKey = "personal" | "culture" | "architecture" | "food" | "nature" | "nightlife";
-type Ratings = Record<RatingKey, number | null>;
-type CityId = number | string;
-
-type City = {
-  geonameId?: string | null;
-  id: CityId; name: string; country: string; continent: string; lat: number; lng: number;
-  rating: number; ratings: Ratings; dateFrom: string; dateTo: string;
-  visitType: string; note: string; emoji: string; photoUrl?: string; createdAt?: string;
-};
-
-type CityOption = {
-  geonameId?: string | null;
-  id?: string;
-  name: string; ascii?: string; country: string; continent: string;
-  lat: number; lng: number; emoji: string; population?: number;
-};
-
-type PersonalList = { id: CityId; title: string; cityIds: CityId[] };
 
 const suggestions: CityOption[] = [
   { name: "Barcelona", country: "Spain", continent: "Europe", lat: 41.39, lng: 2.17, emoji: "🇪🇸" },
@@ -63,17 +49,6 @@ const savePendingSignupEmail = (email: string) => {
 const clearPendingSignupEmail = () => {
   try { window.localStorage.removeItem(pendingSignupEmailKey); } catch { /* No persistent state to clear. */ }
 };
-const colorForScore = (score: number) =>
-  score > 4.5 ? "#236844" :
-  score > 4 ? "#62A461" :
-  score > 3 ? "#D4B849" :
-  score > 2 ? "#E28A43" : "#CD554F";
-const scoreFor = (city: City, category: string) =>
-  category === "Overall" ? city.rating : city.ratings[category.toLowerCase() as RatingKey];
-const calculateOverall = (ratings: Ratings) => {
-  const values = Object.values(ratings).filter((value): value is number => value !== null && value > 0);
-  return values.length ? Math.round((values.reduce((sum, value) => sum + value, 0) / values.length) * 10) / 10 : 0;
-};
 const formatVisitDate = (from: string, to: string) => {
   const formatter = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" });
   if (!from && !to) return "Dates not added";
@@ -83,11 +58,6 @@ const formatVisitDate = (from: string, to: string) => {
   if (to === from) return start;
   return `${start} – ${formatter.format(new Date(`${to}T12:00:00`))}`;
 };
-const normalizeSearch = (value: string) => value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
-const escapeMapText = (value: string) => value.replace(/[&<>"']/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[char]!));
-const countryFlag = (code: string) => code.length === 2
-  ? String.fromCodePoint(...code.toUpperCase().split("").map(char => 127397 + char.charCodeAt(0)))
-  : "🌍";
 
 function FlagMark({ emoji, country, className = "" }: { emoji: string; country: string; className?: string }) {
   const points = [...emoji].map(char => char.codePointAt(0) || 0);
@@ -136,160 +106,6 @@ function CategoryRating({
   );
 }
 
-function InteractiveMap({
-  cities,
-  wishlist,
-  selected,
-  onSelect,
-  scoreCategory
-}: {
-  cities: City[];
-  wishlist: CityOption[];
-  selected: City | null;
-  onSelect: (city: City | null) => void;
-  scoreCategory: string;
-}) {
-  const mapElement = useRef<HTMLDivElement>(null);
-  const mapInstance = useRef<import("leaflet").Map | null>(null);
-  const markerLayer = useRef<import("leaflet").LayerGroup | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function createMap() {
-      if (!mapElement.current || mapInstance.current) return;
-      const L = await import("leaflet");
-      if (cancelled || !mapElement.current) return;
-
-      const map = L.map(mapElement.current, {
-        center: selected ? [selected.lat, selected.lng] : [22, 8],
-        zoom: selected ? 6 : 2,
-        minZoom: 2,
-        maxZoom: 18,
-        zoomControl: false,
-        markerZoomAnimation: false,
-        worldCopyJump: true,
-        preferCanvas: true
-      });
-
-      L.control.zoom({ position: "topright" }).addTo(map);
-      const cartoKey = process.env.NEXT_PUBLIC_CARTO_BASEMAP_API_KEY;
-      const osmTiles = () => L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-        maxZoom: 19
-      });
-      if (cartoKey) {
-        mapElement.current.dataset.basemap = "positron";
-        const positronTiles = L.tileLayer(
-          `https://basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}.png?key=${encodeURIComponent(cartoKey)}`,
-          {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, &copy; <a href="https://carto.com/attribution/">CARTO</a>',
-            maxZoom: 20
-          }
-        ).addTo(map);
-        let tileErrors = 0;
-        positronTiles.on("tileerror", () => {
-          if (++tileErrors < 3 || !mapElement.current) return;
-          map.removeLayer(positronTiles);
-          mapElement.current.dataset.basemap = "osm";
-          osmTiles().addTo(map);
-        });
-      } else {
-        mapElement.current.dataset.basemap = "osm";
-        osmTiles().addTo(map);
-      }
-
-      const layer = L.layerGroup().addTo(map);
-      mapInstance.current = map;
-      markerLayer.current = layer;
-
-      const updateZoomDetail = () => {
-        if (mapElement.current) {
-          const zoom = map.getZoom();
-          mapElement.current.dataset.cityZoom = zoom >= 8 ? "true" : "false";
-          mapElement.current.dataset.markerScale = zoom <= 3 ? "world" : zoom <= 5 ? "regional" : zoom <= 7 ? "local" : "street";
-        }
-      };
-      map.on("zoomend", updateZoomDetail);
-      map.on("click", () => onSelect(null));
-      updateZoomDetail();
-    }
-
-    createMap();
-    return () => { cancelled = true; };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    let retry: ReturnType<typeof setTimeout>;
-
-    async function drawMarkers() {
-      if (cancelled) return;
-      const map = mapInstance.current;
-      const layer = markerLayer.current;
-      if (!map || !layer) {
-        retry = setTimeout(drawMarkers, 40);
-        return;
-      }
-
-      const L = await import("leaflet");
-      if (cancelled) return;
-      layer.clearLayers();
-
-      cities.forEach(city => {
-        const isSelected = selected?.id === city.id;
-        const displayScore = scoreFor(city, scoreCategory);
-        if (displayScore === null) return;
-        const icon = L.divIcon({
-          className: "city-div-icon",
-          html: `<div class="city-map-marker${isSelected ? " is-selected" : ""}" style="--marker-color:${colorForScore(displayScore)}">
-            <span class="city-marker-label">${escapeMapText(city.name)}</span>
-          </div>`,
-          iconSize: [40, 40],
-          iconAnchor: [20, 20]
-        });
-
-        const marker = L.marker([city.lat, city.lng], {
-          icon,
-          title: `${city.name}, ${displayScore.toFixed(1)} stars`,
-          riseOnHover: true
-        }).addTo(layer);
-
-        marker.bindTooltip(
-          `<strong>${escapeMapText(city.name)}</strong><br>${escapeMapText(city.country)} · ${displayScore.toFixed(1)}/5 ${scoreCategory.toLowerCase()}`,
-          { direction: "top", offset: [0, -18], className: "city-tooltip" }
-        );
-        marker.on("click", () => {
-          onSelect(city);
-          if (map.getZoom() < 6) map.flyTo([city.lat, city.lng], 6, { duration: 0.8 });
-        });
-      });
-
-      wishlist.forEach(city => {
-        const icon = L.divIcon({
-          className: "city-div-icon",
-          html: `<div class="city-map-marker wishlist-marker"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 27.5 4.8 16.7C-1.1 10.9 3.3 2.7 10.1 3.2c2.6.2 4.7 1.6 5.9 3.8 1.2-2.2 3.3-3.6 5.9-3.8 6.8-.5 11.2 7.7 5.3 13.5L16 27.5Z"/></svg><span class="city-marker-label">${escapeMapText(city.name)}</span></div>`,
-          iconSize: [40, 40],
-          iconAnchor: [20, 20]
-        });
-        L.marker([city.lat, city.lng], { icon, title: city.name, riseOnHover: true })
-          .bindTooltip(`<strong>${escapeMapText(city.name)}</strong><br>${escapeMapText(city.country)}`, { direction: "top", offset: [0, -13], className: "city-tooltip" })
-          .addTo(layer);
-      });
-    }
-
-    drawMarkers();
-    return () => { cancelled = true; clearTimeout(retry); };
-  }, [cities, wishlist, selected, onSelect, scoreCategory]);
-
-  useEffect(() => () => {
-    mapInstance.current?.remove();
-    mapInstance.current = null;
-  }, []);
-
-  return <div ref={mapElement} className="leaflet-map" aria-label="Interactive map of your rated cities" />;
-}
-
 export default function CityLogger({ nativeMode = false }: { nativeMode?: boolean }) {
   const [tab, setTab] = useState<"map" | "rankings" | "log" | "compare" | "lists" | "profile" | "city">("map");
   const [cityReturnTab, setCityReturnTab] = useState<"map" | "rankings" | "log">("map");
@@ -313,6 +129,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
   const [query, setQuery] = useState("");
   const [candidate, setCandidate] = useState<CityOption | null>(null);
   const [searchResults, setSearchResults] = useState<CityOption[]>(suggestions);
+  const [searchError, setSearchError] = useState("");
   const [searching, setSearching] = useState(false);
   const [ratings, setRatings] = useState<Ratings>({ personal: 4, culture: 4, architecture: 4, food: 4, nature: null, nightlife: null });
   const [personalOnly, setPersonalOnly] = useState(false);
@@ -360,6 +177,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
   const loadedUserId = useRef<string | null>(null);
   const syncRequest = useRef(0);
   const journalOperations = useRef(new JournalOperations());
+  const listCreation = useRef(new CreationAttempt());
   const publicPageUrl = (path: string) => nativeMode ? `https://citylogger.app${path}` : path;
   const citySummaries = useMemo(() => latestCities(cities), [cities]);
   const storyHistory = useMemo(() => selected ? visitHistory(cities, selected) : [], [cities, selected]);
@@ -377,13 +195,13 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
   const datedVisits = chronological.filter(city => city.dateFrom || city.dateTo);
   const undatedVisits = chronological.filter(city => !city.dateFrom && !city.dateTo);
   const fullRanking = useMemo(() => canonicalRanking(cities, manualOrder), [cities, manualOrder]);
-  const rankingId = (city: City) => fullRanking.find(id => visitHistory(cities, city).some(visit => visit.id === id)) ?? city.id;
+  const rankByCity = useMemo(() => rankingIndex(cities, fullRanking), [cities, fullRanking]);
+  const rankingId = (city: City) => rankByCity.get(cityIdentity(city))?.id ?? city.id;
   const displayedRanked = useMemo(() => {
     if (!manualOrder) return ranked;
-    const positions = new Map(fullRanking.map((id, index) => [id, index]));
-    const position = (city: City) => Math.min(...visitHistory(cities, city).map(visit => positions.get(visit.id) ?? Number.MAX_SAFE_INTEGER));
+    const position = (city: City) => rankByCity.get(cityIdentity(city))?.position ?? Number.MAX_SAFE_INTEGER;
     return [...ranked].sort((a, b) => position(a) - position(b));
-  }, [ranked, manualOrder, cities, fullRanking]);
+  }, [ranked, manualOrder, rankByCity]);
   const firstCompared = citySummaries.find(city => String(city.id) === String(compareIds[0])) || citySummaries[0];
   const secondCompared = citySummaries.find(city => String(city.id) === String(compareIds[1]) && city.id !== firstCompared?.id)
     || citySummaries.find(city => city.id !== firstCompared?.id);
@@ -477,6 +295,10 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
   }
 
   async function runJournalMutation<T>(work: (isCurrent: () => boolean) => Promise<T>, commit: (value: T) => void, onError?: (error: unknown) => void) {
+    if (user && !journalOperations.current.ready) {
+      setLoadError("Your journal has not fully loaded. Retry loading it before making changes.");
+      return false;
+    }
     if (user && syncStatus === "loading" && !journalOperations.current.busy) {
       setLoadError("Your journal is still loading. Please wait before making changes.");
       return false;
@@ -500,7 +322,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
     } catch (error) {
       if (operation.isCurrent()) {
         setSyncStatus("error");
-        setLoadError("This change could not be saved. Your last saved data is still available. Please retry.");
+        setLoadError(error instanceof BackendError ? error.message : "This change could not be saved. Your last saved data is still available. Please retry.");
         onError?.(error);
       }
       return false;
@@ -515,49 +337,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
     setGuestImportError("");
     const guestSnapshot = localStorage.getItem(GUEST_KEY);
       await runJournalMutation(async isCurrent => {
-        const check = () => { if (!isCurrent()) throw new Error("Account changed."); };
-        const guest = JSON.parse(guestSnapshot || "null") as { cities: City[]; wishlist: CityOption[]; lists: PersonalList[]; manualOrder: CityId[] | null; yearlyGoal: number } | null;
-        if (!guest) return null;
-        const [existingVisits, existingState] = await Promise.all([loadVisits(user.id), loadAppState(user.id)]);
-        check();
-        const visitIds = new Set(existingVisits.map(visit => visit.id));
-        const idMap = new Map<string, string>();
-        // Save the goal first: a retry after partial visit insertion must not lose it.
-        if (!existingVisits.length) await saveStoredYearlyGoal(guest.yearlyGoal || 10, user.id);
-        for (const visit of guest.cities || []) {
-          check();
-          const id = visitIds.has(String(visit.id)) ? String(visit.id) : await guestTransferId(user.id, "visit", visit.id);
-          idMap.set(String(visit.id), id);
-          check();
-          if (!visitIds.has(id)) { await createVisit(visit as StoredCity, id, user.id); visitIds.add(id); }
-        }
-        const importedWishlist = [...existingState.wishlist];
-        for (const city of guest.wishlist || []) {
-          check();
-          if (!importedWishlist.some(item => cityIdentity(item) === cityIdentity(city))) importedWishlist.push(await addWishlistCity(city, user.id));
-        }
-        check();
-        if (importedWishlist.length) await saveWishlistOrder(importedWishlist.map(city => city.id), user.id);
-        const transferredLists: {id: string; cityIds: string[]}[] = [];
-        for (const [index, list] of (guest.lists || []).entries()) {
-          check();
-          const id = existingState.lists.some(item => item.id === String(list.id)) ? String(list.id) : await guestTransferId(user.id, "list", list.id);
-          check();
-          const existing = existingState.lists.find(item => item.id === id);
-          if (!existing) await createPersonalList(list.title, existingState.lists.length + index, id, user.id);
-          check();
-          const cityIds = [...new Set([...(existing?.cityIds || []), ...list.cityIds.map(id => idMap.get(String(id))).filter((id): id is string => Boolean(id))])];
-          await savePersonalListCities(id, cityIds, user.id);
-          transferredLists.push({id, cityIds});
-        }
-        check();
-        const ranking = [...new Set([...existingState.rankingOrder, ...(guest.manualOrder || []).map(id => idMap.get(String(id))).filter((id): id is string => Boolean(id))])];
-        if (ranking.length) await saveRankingOrder(ranking, user.id);
-        check();
-        const result = await Promise.all([loadVisits(user.id), loadAppState(user.id)]);
-        check();
-        verifyGuestTransfer({visits:[...idMap.values()], lists:transferredLists, wishlist:importedWishlist.map(city => city.id), ranking}, result[0], result[1]);
-        return result;
+        return transferGuestJournal(guestSnapshot, user.id, isCurrent);
       }, result => {
         if (!result) return;
         const [stored, state] = result;
@@ -614,9 +394,10 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
   }, []);
 
   useEffect(() => {
-    if (!user) { loadedUserId.current = null; setLoadError(""); return; }
+    if (!user) { listCreation.current.clear(); loadedUserId.current = null; setLoadError(""); setSyncStatus("idle"); return; }
     if (loadedUserId.current !== user.id) {
       loadedUserId.current = user.id;
+      listCreation.current.clear(); setNewListTitle("");
       setSaveBusy(false); setListBusy(false); setAdding(false); setCandidate(null); setEditingVisitId(null);
       setCities([]); setSelected(null); setWishlist([]); setLists([]); setManualOrder(null);
       setCompareIds(["", ""]);
@@ -630,6 +411,15 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
       setLoadError("");
       const [visitsResult, stateResult] = await Promise.allSettled([loadVisits(user.id), loadAppState(user.id)]);
       if (!active || journalOperations.current.busy || requestId !== syncRequest.current) return;
+      // Never replace a complete journal with a mixture of fresh and failed reads.
+      // On initial failure, the coordinator keeps writes blocked until Retry succeeds.
+      if (visitsResult.status === "rejected" || stateResult.status === "rejected") {
+        journalOperations.current.markLoadFailed(user.id);
+        const failed = [visitsResult.status === "rejected" ? "visits" : null, stateResult.status === "rejected" ? "lists and preferences" : null].filter(Boolean);
+        setLoadError(`Could not load ${failed.join(" or ")}. Your saved data has not been deleted. Retry before making changes.`);
+        setSyncStatus("idle");
+        return;
+      }
       if (visitsResult.status === "fulfilled") {
         const stored = visitsResult.value;
         setCities(stored);
@@ -647,8 +437,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
         setGoalDraft(String(appState.yearlyGoal));
         setProfileName(appState.displayName || user.user_metadata?.display_name || user.email?.split("@")[0] || "Traveller");
       }
-      const failed = [visitsResult.status === "rejected" ? "visits" : null, stateResult.status === "rejected" ? "lists and preferences" : null].filter(Boolean);
-      if (failed.length) setLoadError(`Could not load ${failed.join(" or ")}. Your saved data has not been deleted.`);
+      journalOperations.current.markLoaded(user.id);
       setSyncStatus("idle");
     };
     refresh();
@@ -658,53 +447,23 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
   }, [user?.id, loadRetry]);
 
   useEffect(() => {
-    const needle = normalizeSearch(query.trim());
-    if (needle.length < 2) {
-      setSearchResults(suggestions);
-      setSearching(false);
-      return;
-    }
-
-    const prefix = needle.replace(/[^a-z0-9]/g, "").slice(0, 2) || "__";
     const controller = new AbortController();
+    setSearchError("");
+    if (query.trim().length < 2) {
+      setSearchResults(suggestions); setSearching(false); return;
+    }
     setSearching(true);
-
-    fetch(`/cities/${prefix}.json`, { signal: controller.signal })
-      .then(response => response.ok ? response.json() : [])
-      .then((records: [string, string, string, string, number, number, number, string, string?][]) => {
-        const matchingRecords = records
-          .filter(record =>
-            normalizeSearch(record[0]).includes(needle) ||
-            normalizeSearch(record[1]).includes(needle) ||
-            normalizeSearch(record[2]).includes(needle)
-          );
-        const uniqueRecords = [...new Map(
-          matchingRecords.map(record => [
-            record[8] || `${normalizeSearch(record[0])}|${record[2]}|${record[4]}|${record[5]}`,
-            record
-          ])
-        ).values()];
-        const matches = uniqueRecords
-          .slice(0, 12)
-          .map(record => ({
-            geonameId: record[8] || null,
-            name: record[0],
-            ascii: record[1],
-            country: record[2],
-            continent: record[3],
-            lat: record[4],
-            lng: record[5],
-            population: record[6],
-            emoji: countryFlag(record[7])
-          }));
-        setSearchResults(matches);
-      })
-      .catch(error => {
-        if (error.name !== "AbortError") setSearchResults([]);
-      })
-      .finally(() => setSearching(false));
-
-    return () => controller.abort();
+    const timer = setTimeout(() => {
+      searchCities(query, controller.signal).then(results => {
+        if (!controller.signal.aborted) setSearchResults(results);
+      }).catch(() => {
+        if (!controller.signal.aborted) {
+          setSearchResults([]);
+          setSearchError("City search is temporarily unavailable. Please try again.");
+        }
+      }).finally(() => { if (!controller.signal.aborted) setSearching(false); });
+    }, 200);
+    return () => { clearTimeout(timer); controller.abort(); };
   }, [query]);
 
   function beginAdd(city: CityOption | City) {
@@ -778,10 +537,10 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
           : editingVisitId ? await updateVisit({ ...draftCity, id: editingVisitId } as StoredCity, user.id)
           : await createVisit(draftCity as Omit<StoredCity, "id">, operationId, user.id);
       }, savedCity => {
-        setCities(current => editingVisitId ? current.map(city => String(city.id) === editingVisitId ? savedCity : city) : [savedCity, ...current]);
+        setCities(current => editingVisitId ? current.map(city => String(city.id) === editingVisitId ? savedCity : city) : [savedCity, ...current.filter(city => String(city.id) !== String(savedCity.id))]);
         setSelected(savedCity); setAdding(false); setCandidate(null); setQuery("");
         setTab(editingVisitId ? editorReturnTab : "map"); setEditingVisitId(null);
-      }, error => setSaveError(error instanceof Error ? error.message : "The visit could not be saved."));
+      }, error => setSaveError(error instanceof BackendError ? error.message : "The visit could not be saved. Please retry."));
   }
   async function submitAuth() {
     if (authBusy) return;
@@ -867,7 +626,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
         setAuthMessage("Password updated. You can continue using CityLog.");
       }
     } catch (error) {
-      setAuthMessage(error instanceof Error ? error.message : "Authentication failed.");
+      setAuthMessage(authFeedback(error));
     } finally {
       setAuthBusy(false);
     }
@@ -883,7 +642,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
       setResendCooldown(60);
       setAuthMessage("A new code is on its way. Check your inbox and spam folder.");
     } catch (error) {
-      setAuthMessage(error instanceof Error ? error.message : "Could not resend the code. Try again shortly.");
+      setAuthMessage(authFeedback(error));
     } finally {
       setAuthBusy(false);
     }
@@ -891,7 +650,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
 
   async function exportMyData() {
     if (!user) return;
-    await runJournalMutation(async () => downloadAccountData(), payload => {
+    await runJournalMutation(async () => downloadAccountData(user.id), payload => {
       const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
       const anchor = document.createElement("a");
       anchor.href = url; anchor.download = `citylog-data-${new Date().toISOString().slice(0, 10)}.json`;
@@ -972,8 +731,13 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
   async function createList() {
     const title = newListTitle.trim();
     if (!title) return;
-    await runJournalMutation(async () => user ? await createPersonalList(title, lists.length, undefined, user.id) : { id: crypto.randomUUID(), title, cityIds: [] }, saved => {
-      setLists(current => [...current, saved]); setNewListTitle("");
+    await runJournalMutation(async () => {
+      const id = listCreation.current.idFor(user?.id || null, title);
+      return user ? await createPersonalList(title, lists.length, id, user.id) : { id, title, cityIds: [] };
+    }, saved => {
+      setLists(current => current.some(list => String(list.id) === saved.id)
+        ? current.map(list => String(list.id) === saved.id ? saved : list) : [...current, saved]);
+      listCreation.current.clear(); setNewListTitle("");
     });
   }
   function startEditingList(list: PersonalList) {
@@ -987,7 +751,7 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
     if (!title || title.length > 100) { setListEditError("Choose a title between 1 and 100 characters."); return; }
     await runJournalMutation(async () => { if (user) await renamePersonalList(String(listId), title, user.id); }, () => {
       setLists(current => current.map(list => list.id === listId ? { ...list, title } : list)); setEditingListId(null); setListEditError("");
-    }, error => setListEditError(error instanceof Error ? error.message : "Could not rename this list."));
+    }, error => setListEditError(error instanceof BackendError ? error.message : "Could not rename this list. Please retry."));
   }
   async function removeList(list: PersonalList) {
     if (!window.confirm(`Delete “${list.title}”? The cities and visits in it will be kept.`)) return;
@@ -1332,20 +1096,23 @@ export default function CityLogger({ nativeMode = false }: { nativeMode?: boolea
       </nav>
       </div>
 
-      <Onboarding stage={entryStage} onStage={setEntryStage} notice={onboardingNotice} onGuest={enterGuest} onComplete={finishOnboarding} onAuth={mode=>{setAuthView(mode);setAuthMessage("");setAuthOpen(true);}}/>
+      <div inert={authOpen} aria-hidden={authOpen || undefined}>
+        <Onboarding stage={entryStage} onStage={setEntryStage} notice={onboardingNotice} onGuest={enterGuest} onComplete={finishOnboarding} onAuth={mode=>{setAuthView(mode);setAuthMessage("");setAuthOpen(true);}}/>
+      </div>
 
       {adding && (
         <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) closeVisitEditor(); }}>
           <section className="add-modal" role="dialog" aria-modal="true" aria-labelledby="add-title">
             <div className="modal-head">
-              <button className="back-btn" onClick={() => editingVisitId ? closeVisitEditor() : candidate ? setCandidate(null) : closeVisitEditor()}><ArrowLeft/></button>
+              <button className="back-btn" aria-label={candidate && !editingVisitId ? "Back to city search" : "Close visit editor"} disabled={saveBusy} onClick={() => editingVisitId ? closeVisitEditor() : candidate ? setCandidate(null) : closeVisitEditor()}><ArrowLeft aria-hidden="true"/></button>
               <div><p className="kicker">{editingVisitId ? "EDIT MEMORY" : "NEW MEMORY"}</p><h2 id="add-title">{candidate ? editingVisitId ? `Update ${candidate.name}` : `How was ${candidate.name}?` : "Where have you been?"}</h2></div>
-              <button className="close-btn static" onClick={closeVisitEditor}><X/></button>
+              <button className="close-btn static" aria-label="Close visit dialog" disabled={saveBusy} onClick={closeVisitEditor}><X aria-hidden="true"/></button>
             </div>
             {!candidate ? (
               <>
                 <label className="search-box"><Search/><input autoFocus value={query} onChange={e => setQuery(e.target.value)} placeholder="Search for a city"/></label>
                 <p className="section-label">{query ? searching ? "SEARCHING 234,000+ CITIES…" : "SEARCH RESULTS" : "SUGGESTED FOR YOU"}</p>
+                {searchError && <p role="alert">{searchError} <button type="button" onClick={() => setQuery(value => value + " ")}>Retry</button></p>}
                 <div className="suggestions">
                   {searchResults.map(city => (
                     <div className="suggestion-row" key={cityIdentity(city)}>

@@ -17,6 +17,6 @@ describe("backend pagination", () => {
     await expect(fetchAllPages(async (from) => ({
       data: from ? null : Array.from({ length: 500 }, (_, id) => ({ id })),
       error: from ? { message: "Page unavailable" } : null
-    }), "Could not export rows.")).rejects.toThrow("Page unavailable");
+    }), "Could not export rows.")).rejects.toThrow("Could not export rows.");
   });
 });

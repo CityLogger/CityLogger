@@ -1,12 +1,16 @@
-export type StoredCity = {
+/** Location identity is shared by visits and Want to Visit; visit IDs stay separate. */
+export type StoredLocation = {
   geonameId?: string | null;
-  id: string;
   name: string;
   country: string;
   continent: string;
   lat: number;
   lng: number;
   emoji: string;
+};
+
+export type StoredCity = StoredLocation & {
+  id: string;
   rating: number;
   ratings: {
     personal: number;
@@ -24,15 +28,18 @@ export type StoredCity = {
   photoUrl?: string;
 };
 
-export type VisitRow = {
+export type LocationRow = {
   geoname_id?: string | null;
-  id: string;
   city_name: string;
   country: string;
   continent: string;
   latitude: number;
   longitude: number;
   emoji: string;
+};
+
+export type VisitRow = LocationRow & {
+  id: string;
   overall_rating: number | string;
   personal_rating: number | string;
   culture_rating: number | string | null;
@@ -54,10 +61,16 @@ export function calculateStoredOverall(ratings: StoredCity["ratings"]) {
   return Math.round((values.reduce((sum, value) => sum + value, 0) / values.length) * 10) / 10;
 }
 
-export function validateVisit(city: Omit<StoredCity, "id">) {
+export function validateLocation(city: StoredLocation) {
   if (city.geonameId && !/^[1-9][0-9]*$/.test(city.geonameId)) return "This city's geographic identifier is invalid.";
   if (!city.name.trim() || !city.country.trim() || !city.continent.trim()) return "City location details are required.";
   if (!Number.isFinite(city.lat) || city.lat < -90 || city.lat > 90 || !Number.isFinite(city.lng) || city.lng < -180 || city.lng > 180) return "City coordinates are invalid.";
+  return null;
+}
+
+export function validateVisit(city: Omit<StoredCity, "id">) {
+  const locationError = validateLocation(city);
+  if (locationError) return locationError;
   for (const date of [city.dateFrom, city.dateTo]) {
     if (date && (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0,10) !== date)) return "Choose a valid visit date or leave it blank.";
   }
@@ -70,15 +83,29 @@ export function validateVisit(city: Omit<StoredCity, "id">) {
   return null;
 }
 
-export const fromVisitRow = (row: VisitRow): StoredCity => ({
+export const fromLocationRow = (row: LocationRow): StoredLocation => ({
   ...(row.geoname_id ? { geonameId: row.geoname_id } : {}),
-  id: row.id,
   name: row.city_name,
   country: row.country,
   continent: row.continent,
   lat: row.latitude,
   lng: row.longitude,
   emoji: row.emoji,
+});
+
+export const toLocationRow = (city: StoredLocation): LocationRow => ({
+  ...(city.geonameId ? { geoname_id: city.geonameId } : {}),
+  city_name: city.name.trim(),
+  country: city.country.trim(),
+  continent: city.continent.trim(),
+  latitude: city.lat,
+  longitude: city.lng,
+  emoji: city.emoji,
+});
+
+export const fromVisitRow = (row: VisitRow): StoredCity => ({
+  ...fromLocationRow(row),
+  id: row.id,
   rating: Number(row.overall_rating),
   ratings: {
     personal: Number(row.personal_rating),
@@ -96,15 +123,9 @@ export const fromVisitRow = (row: VisitRow): StoredCity => ({
 });
 
 export const toVisitRow = (city: Omit<StoredCity, "id">, userId: string, id: string) => ({
-  ...(city.geonameId ? { geoname_id: city.geonameId } : {}),
+  ...toLocationRow(city),
   id,
   user_id: userId,
-  city_name: city.name.trim(),
-  country: city.country.trim(),
-  continent: city.continent.trim(),
-  latitude: city.lat,
-  longitude: city.lng,
-  emoji: city.emoji,
   overall_rating: city.rating,
   personal_rating: city.ratings.personal,
   culture_rating: city.ratings.culture,

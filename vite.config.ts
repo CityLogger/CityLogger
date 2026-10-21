@@ -2,6 +2,7 @@ import vinext from "vinext";
 import { defineConfig, loadEnv } from "vite";
 import hostingConfig from "./.openai/hosting.json";
 import { sites } from "./build/sites-vite-plugin";
+import { publicEnvironment } from "./build/public-env";
 
 const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
   "00000000-0000-4000-8000-000000000000";
@@ -45,13 +46,7 @@ export default defineConfig(async ({ mode }) => {
   const { cloudflare } = await import("@cloudflare/vite-plugin");
 
   return {
-    define: {
-      "process.env.NEXT_PUBLIC_SUPABASE_URL": JSON.stringify(env.NEXT_PUBLIC_SUPABASE_URL),
-      "process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY": JSON.stringify(
-        env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
-      ),
-      "process.env.NEXT_PUBLIC_APP_URL": JSON.stringify(env.NEXT_PUBLIC_APP_URL),
-    },
+    define: publicEnvironment(env),
     plugins: [
       vinext(),
       sites(),

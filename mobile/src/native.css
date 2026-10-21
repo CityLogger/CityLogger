@@ -140,10 +140,15 @@
 }
 
 .native-app .leaflet-map .leaflet-control-attribution {
-  max-width: 58%;
-  overflow: hidden;
-  white-space: nowrap;
+  max-width: calc(100vw - 24px);
+  white-space: normal;
   font-size: 8px;
+}
+
+/* Keep provider credits readable above the floating navigation, including safe areas. */
+.native-app .leaflet-map .leaflet-bottom.leaflet-right {
+  bottom: calc(78px + env(safe-area-inset-bottom));
+  right: 12px;
 }
 
 .native-app .map-legend {

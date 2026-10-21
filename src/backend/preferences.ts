@@ -2,17 +2,9 @@ import { getBackendClient, requireCurrentUser } from "./client";
 import { BackendError, normaliseBackendError } from "./errors";
 import { fetchAllPages } from "./pagination";
 import { geographicRead } from "./geography";
+import { fromLocationRow, toLocationRow, validateLocation, type LocationRow, type StoredLocation } from "./model";
 
-export type StoredWishlistCity = {
-  geonameId?: string | null;
-  id: string;
-  name: string;
-  country: string;
-  continent: string;
-  lat: number;
-  lng: number;
-  emoji: string;
-};
+export type StoredWishlistCity = StoredLocation & { id: string };
 
 export type StoredPersonalList = {
   id: string;
@@ -20,16 +12,7 @@ export type StoredPersonalList = {
   cityIds: string[];
 };
 
-type WishlistRow = {
-  geoname_id?: string | null;
-  id: string;
-  city_name: string;
-  country: string;
-  continent: string;
-  latitude: number;
-  longitude: number;
-  emoji: string;
-};
+type WishlistRow = LocationRow & { id: string };
 
 type ListRow = { id: string; title: string };
 type ListCityRow = { list_id: string; visit_id: string };
@@ -67,14 +50,8 @@ export async function loadAppState(expectedUserId?: string): Promise<StoredAppSt
     yearlyGoal: profileResult.data?.yearly_goal || 10,
     rankingOrder: profileResult.data?.ranking_order || [],
     wishlist: wishlistRows.map(row => ({
-      ...(row.geoname_id ? { geonameId: row.geoname_id } : {}),
       id: row.id,
-      name: row.city_name,
-      country: row.country,
-      continent: row.continent,
-      lat: row.latitude,
-      lng: row.longitude,
-      emoji: row.emoji
+      ...fromLocationRow(row)
     })).sort((a, b) => (wishlistPositions.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (wishlistPositions.get(b.id) ?? Number.MAX_SAFE_INTEGER)),
     lists: listRows.map(list => ({
       id: list.id,
@@ -107,30 +84,24 @@ export async function saveWishlistOrder(wishlistOrder: string[], expectedUserId?
 }
 
 export async function addWishlistCity(city: Omit<StoredWishlistCity, "id">, expectedUserId?: string): Promise<StoredWishlistCity> {
+  const validationError = validateLocation(city);
+  if (validationError) throw new BackendError("VALIDATION", validationError);
   const client = getBackendClient();
   const user = await requireCurrentUser(expectedUserId);
   const { data, error } = await client.from("wishlist_cities").upsert({
-    ...(city.geonameId ? { geoname_id: city.geonameId } : {}),
-    user_id: user.id,
-    city_name: city.name.trim(),
-    country: city.country.trim(),
-    continent: city.continent.trim(),
-    latitude: city.lat,
-    longitude: city.lng,
-    emoji: city.emoji
+    ...toLocationRow(city),
+    user_id: user.id
   }, { onConflict: "user_id,city_name,country,latitude,longitude" }).select("id, city_name, country, continent, latitude, longitude, emoji").single();
   if (error) throw normaliseBackendError(error, "Could not save this city to Want to Visit.");
   const row = data as WishlistRow;
-  return { id: row.id, name: row.city_name, country: row.country, continent: row.continent, lat: row.latitude, lng: row.longitude, emoji: row.emoji, ...(city.geonameId ? { geonameId: city.geonameId } : {}) };
+  return { id: row.id, ...fromLocationRow(row), ...(city.geonameId ? { geonameId: city.geonameId } : {}) };
 }
 
 export async function removeWishlistCity(city: Pick<StoredWishlistCity, "id" | "name" | "country">, expectedUserId?: string) {
   if (!city.id) throw new BackendError("VALIDATION", "Reload the saved city before removing it.");
   const client = getBackendClient();
-  await requireCurrentUser(expectedUserId);
-  let query = client.from("wishlist_cities").delete();
-  query = query.eq("id", city.id);
-  const { error } = await query;
+  const user = await requireCurrentUser(expectedUserId);
+  const { error } = await client.from("wishlist_cities").delete().eq("id", city.id).eq("user_id", user.id);
   if (error) throw normaliseBackendError(error, "Could not remove this city from Want to Visit.");
 }
 
@@ -139,8 +110,18 @@ export async function createPersonalList(title: string, position: number, id = c
   if (!cleanTitle || cleanTitle.length > 100) throw new BackendError("VALIDATION", "List titles must be between 1 and 100 characters.");
   const client = getBackendClient();
   const user = await requireCurrentUser(expectedUserId);
-  const { data, error } = await client.from("personal_lists").upsert({ id, user_id: user.id, title: cleanTitle, position }, { onConflict: "id" }).select("id, title").single();
+  const { data, error } = await client.from("personal_lists").upsert({ id, user_id: user.id, title: cleanTitle, position }, { onConflict: "id", ignoreDuplicates: true }).select("id, title").maybeSingle();
   if (error) throw normaliseBackendError(error, "Could not create this list.");
+  if (!data) {
+    // A retried creation must preserve later cloud edits and list membership.
+    const existing = await client.from("personal_lists").select("id, title").eq("id", id).eq("user_id", user.id).single();
+    if (existing.error) throw normaliseBackendError(existing.error, "Could not verify the saved list.");
+    const entries = await fetchAllPages<ListCityRow>(
+      (from, to) => client.from("personal_list_cities").select("list_id, visit_id").eq("list_id", id).eq("user_id", user.id).order("position").order("created_at").order("id").range(from, to),
+      "Could not load your list entries."
+    );
+    return { id: existing.data.id, title: existing.data.title, cityIds: entries.map(entry => entry.visit_id) };
+  }
   return { id: data.id, title: data.title, cityIds: [] };
 }
 

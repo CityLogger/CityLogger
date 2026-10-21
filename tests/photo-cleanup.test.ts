@@ -34,6 +34,47 @@ describe("privileged photograph cleanup", () => {
     expect(remove).not.toHaveBeenCalled();
   });
 
+  it("does not remove validated paths when a later metadata page fails", async () => {
+    const source = Array.from({ length: 500 }, (_, id) => ({ storage_path: `alice/visit/${id}.jpg` }));
+    const fetchPage = vi.fn(async (from: number, _to: number) => ({
+      data: from === 0 ? source : null,
+      error: from === 0 ? null : new Error("later page unavailable")
+    }));
+    const remove = vi.fn();
+
+    await expect(cleanupPhotos(fetchPage, remove, "alice")).rejects.toThrow("inspect");
+
+    expect(fetchPage.mock.calls).toEqual([[0, 499], [500, 999]]);
+    expect(remove).not.toHaveBeenCalled();
+  });
+
+  it("stops after a later storage batch fails and allows cleanup to be retried", async () => {
+    const source = Array.from({ length: 250 }, (_, id) => ({ storage_path: `alice/visit/${id}.jpg` }));
+    const fetchPage = async () => ({ data: source, error: null });
+    let batch = 0;
+    const remove = vi.fn(async (_paths: string[]) => ({
+      error: ++batch === 2 ? new Error("later batch unavailable") : null
+    }));
+
+    await expect(cleanupPhotos(fetchPage, remove, "alice")).rejects.toThrow("retry");
+
+    expect(remove.mock.calls.map(([paths]) => paths)).toEqual([
+      source.slice(0, 100).map(row => row.storage_path),
+      source.slice(100, 200).map(row => row.storage_path)
+    ]);
+
+    const retryRemove = vi.fn(async (_paths: string[]) => ({ error: null }));
+    await cleanupPhotos(fetchPage, retryRemove, "alice");
+    expect(retryRemove.mock.calls.flatMap(([paths]) => paths)).toEqual(source.map(row => row.storage_path));
+    expect(retryRemove.mock.calls.map(([paths]) => paths.length)).toEqual([100, 100, 50]);
+  });
+
+  it("does not call storage when no photograph metadata exists", async () => {
+    const remove = vi.fn();
+    await cleanupPhotos(async () => ({ data: [], error: null }), remove, "alice");
+    expect(remove).not.toHaveBeenCalled();
+  });
+
   it("handles malformed deletion payloads without throwing", () => {
     for (const value of [null, undefined, [], "id", { visit_id: 1 }, { visit_id: "invalid" }]) expect(validVisitId(value)).toBeNull();
     const id = "12345678-1234-1234-1234-123456789abc";

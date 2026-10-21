@@ -1,6 +1,36 @@
 import { describe, expect, it } from "vitest";
 import { calculateStoredOverall, validateVisit } from "../src/backend";
-import { fromVisitRow, toVisitRow } from "../src/backend/model";
+import { fromLocationRow, fromVisitRow, toLocationRow, toVisitRow, validateLocation, type StoredLocation } from "../src/backend/model";
+
+describe("shared city location model", () => {
+  const location: StoredLocation = {
+    geonameId: "2267057", name: " Lisbon ", country: " Portugal ", continent: "Europe",
+    lat: 38.72, lng: -9.14, emoji: "🇵🇹"
+  };
+
+  it("maps only explicit geographic fields and preserves stable source identity", () => {
+    const row = toLocationRow({ ...location, note: "not a location field" } as StoredLocation);
+    expect(row).toEqual({
+      geoname_id: "2267057", city_name: "Lisbon", country: "Portugal", continent: "Europe",
+      latitude: 38.72, longitude: -9.14, emoji: "🇵🇹"
+    });
+    expect(fromLocationRow(row)).toEqual({ ...location, name: "Lisbon", country: "Portugal" });
+  });
+
+  it("keeps legacy locations valid without inventing a geographic ID", () => {
+    const { geonameId: _unused, ...legacy } = location;
+    expect(validateLocation(legacy)).toBeNull();
+    expect(toLocationRow(legacy)).not.toHaveProperty("geoname_id");
+    expect(fromLocationRow(toLocationRow(legacy))).not.toHaveProperty("geonameId");
+  });
+
+  it.each([
+    { lat: NaN }, { lat: 91 }, { lng: Infinity }, { lng: -181 },
+    { name: " " }, { country: "" }, { continent: "" }, { geonameId: "-1" }, { geonameId: "not-an-id" }
+  ])("rejects invalid shared location fields %o", fields => {
+    expect(validateLocation({ ...location, ...fields })).not.toBeNull();
+  });
+});
 
 describe("visit storage validation", () => {
   const minimalVisit = {

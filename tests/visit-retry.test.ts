@@ -16,5 +16,5 @@ it("a retried creation reads the existing entry rather than overwriting a later 
 it("a failed insert propagates the failure without claiming a saved visit",async()=>{
   const builder={upsert:vi.fn(()=>builder),select:vi.fn(()=>builder),maybeSingle:async()=>({data:null,error:{message:"offline"}})};
   mocks.from.mockReturnValue(builder);
-  await expect(createVisit(draft,"operation","alice")).rejects.toThrow("offline");
+  await expect(createVisit(draft,"operation","alice")).rejects.toThrow("Could not save this visit.");
 });

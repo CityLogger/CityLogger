@@ -15,7 +15,8 @@
     "release:check": "node scripts/check-release-readiness.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:rls": "node scripts/test-rls.mjs"
+    "test:rls": "node scripts/test-rls.mjs",
+    "cities:build": "node scripts/build-city-index.mjs"
   },
   "dependencies": {
     "@capacitor/app": "^8.1.1",

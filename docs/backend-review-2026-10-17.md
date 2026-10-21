@@ -2,6 +2,8 @@
 
 Latest implementation status: see [high-priority implementation handoff](high-priority-fixes-2026-10-17.md). The historical findings below are retained for traceability; the handoff records the current fixes, tests, migrations and remaining blockers.
 
+Subsequent medium/low-priority work is recorded in [maintenance improvements](maintenance-improvements-2026-10-18.md), including static alias search, component extraction, error handling and CI. Do not treat the older open statuses below as a list of unimplemented changes.
+
 ## Follow-up fixes and live checks (same day)
 
 This section supersedes the initial status entries below where noted.
